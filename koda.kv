@@ -1,0 +1,42 @@
+BoxLayout:
+    orientation: 'vertical'
+    canvas.before:
+        Color:
+            rgba: 0.05, 0.05, 0.06, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    # Header
+    BoxLayout:
+        size_hint_y: None
+        height: "80dp"
+        padding: "20dp"
+        Label:
+            text: "KODA"
+            font_size: "32sp"
+            bold: True
+            color: 1, 1, 1, 1
+            halign: 'left'
+
+    # Tabs (CS 1.6 / GO / HL)
+    BoxLayout:
+        size_hint_y: None
+        height: "120dp"
+        # Aquí irían tus botones con las imágenes de assets/
+    
+    # Input Area
+    TextInput:
+        id: ip_input
+        hint_text: "IP:PUERTO"
+        size_hint_y: None
+        height: "50dp"
+        background_color: 0.1, 0.1, 0.1, 1
+        foreground_color: 1, 0.55, 0, 1
+
+    ScrollView:
+        BoxLayout:
+            id: container
+            orientation: 'vertical'
+            size_hint_y: None
+            height: self.minimum_height
