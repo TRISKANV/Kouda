@@ -3,18 +3,18 @@ on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # Versión estable para compilación
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Build with Buildozer
-        uses: ArtemSerebryakov/buildozer-action@v1
+        uses: jrodal98/buildozer-action@v2
         with:
           command: buildozer android debug
           buildozer_version: stable
 
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Koda-Tactical-Mobile
           path: bin/*.apk
