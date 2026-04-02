@@ -7,38 +7,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Caché para acelerar futuros builds
       - name: Cache Buildozer
         uses: actions/cache@v3
         with:
           path: .buildozer
           key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
-      # 2. Dependencias de Sistema (Ubuntu 24.04)
       - name: Install Dependencies
         run: |
           sudo apt update
           sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev \
           libncurses6 libncursesw6 cmake libffi-dev libssl-dev python3-pip python3-setuptools \
-          libltdl-dev libgmp-dev
+          libltdl-dev libgmp-dev libsqlite3-dev tk-dev
           pip3 install --user --upgrade Cython==0.29.33 virtualenv buildozer
 
-      # 3. Compilación con manejo de errores de limpieza
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # El '|| true' evita el error 'FileNotFoundError' si es el primer build
-          buildozer android clean || true
-          # Ahora sí, la compilación real
+          # Forzamos que buildozer NO use el NDK preinstalado de GitHub que es muy nuevo
+          export ANDROID_NDK_HOME=$HOME/.buildozer/android/platform/android-ndk-r25b
           buildozer android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
           BUILDOZER_ALLOW_ORG_TEST: "1"
-          ACCEPT_SDK_LICENSE: "y"
-
-      # 4. Artefacto final
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Koda-Tactical-App
-          path: bin/*.apk
