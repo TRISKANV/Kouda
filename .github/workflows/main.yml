@@ -7,29 +7,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 1. Cache inteligente: Si el buildozer.spec no cambia, no descarga todo de nuevo
       - name: Cache Buildozer
         uses: actions/cache@v3
         with:
           path: .buildozer
           key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
+      # 2. Instalación de dependencias críticas para Ubuntu 24/2026
       - name: Install Dependencies
         run: |
           sudo apt update
           sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev \
-          libncurses6 libncursesw6 cmake libffi-dev libssl-dev python3-pip python3-setuptools
+          libncurses6 libncursesw6 cmake libffi-dev libssl-dev python3-pip python3-setuptools \
+          libltdl-dev libgmp-dev
           pip3 install --user --upgrade Cython==0.29.33 virtualenv buildozer
 
+      # 3. El motor de compilación: Aceptamos licencias y compilamos
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # No usamos 'yes', dejamos que Buildozer lea el .spec
-          buildozer android debug
+          # Forzamos la aceptación de licencias de Android SDK de forma interna
+          mkdir -p ~/.android && touch ~/.android/repositories.cfg
+          # Ejecutamos Buildozer. Si falla la primera vez por licencias, 
+          # el '|| true' permite que el siguiente comando lo fuerce.
+          buildozer android debug || true
+          buildozer -v android debug
         env:
-          # Esta variable de entorno es el estándar de la industria para saltear licencias
+          # Estas variables le dicen a Google que ya aceptamos todo el contrato
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
           BUILDOZER_ALLOW_ORG_TEST: "1"
+          ACCEPT_SDK_LICENSE: "y"
 
+      # 4. Artefacto final: Aquí aparecerá tu APK para descargar
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
