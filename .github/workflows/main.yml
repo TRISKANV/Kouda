@@ -7,14 +7,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Cache inteligente: Si el buildozer.spec no cambia, no descarga todo de nuevo
+      # 1. Gestión de Caché: Acelera los builds futuros
       - name: Cache Buildozer
         uses: actions/cache@v3
         with:
           path: .buildozer
           key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
-      # 2. Instalación de dependencias críticas para Ubuntu 24/2026
+      # 2. Dependencias de Sistema para Ubuntu 24.04 (Noble Numbat)
       - name: Install Dependencies
         run: |
           sudo apt update
@@ -23,23 +23,21 @@ jobs:
           libltdl-dev libgmp-dev
           pip3 install --user --upgrade Cython==0.29.33 virtualenv buildozer
 
-      # 3. El motor de compilación: Aceptamos licencias y compilamos
+      # 3. Proceso de Compilación Profesional
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # Forzamos la aceptación de licencias de Android SDK de forma interna
-          mkdir -p ~/.android && touch ~/.android/repositories.cfg
-          # Ejecutamos Buildozer. Si falla la primera vez por licencias, 
-          # el '|| true' permite que el siguiente comando lo fuerce.
-          buildozer android debug || true
-          buildozer -v android debug
+          # Limpiamos archivos temporales que causan el error de 'gcc'
+          buildozer android clean
+          # Compilamos en modo debug (más ligero y rápido)
+          buildozer android debug
         env:
-          # Estas variables le dicen a Google que ya aceptamos todo el contrato
+          # Variables para forzar la aceptación de términos de Google
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
           BUILDOZER_ALLOW_ORG_TEST: "1"
           ACCEPT_SDK_LICENSE: "y"
 
-      # 4. Artefacto final: Aquí aparecerá tu APK para descargar
+      # 4. Entrega del APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
