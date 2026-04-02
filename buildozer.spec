@@ -1,8 +1,8 @@
 [app]
 
 # (Sección 1) Información de la App
-title = Koda Tactical
-package.name = kodatacticalpro
+title = Koda 
+package.name = koda
 package.domain = org.triskanv
 source.dir = .
 source.include_exts = py,png,jpg,kv,json
