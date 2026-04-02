@@ -1,64 +1,83 @@
+import socket
+import struct
+from threading import Thread
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.core.window import Window
-from kivy.uix.button import Button
-from kivy.properties import StringProperty, ListProperty
+from kivy.clock import mainthread
+from kivy.properties import StringProperty
 
-# Configuración de ventana para pruebas en PC (simula móvil)
-Window.clearcolor = (0.02, 0.02, 0.03, 1) # Fondo azul-negro muy oscuro
+# Configuración de ventana para PC
+Window.clearcolor = (0.02, 0.02, 0.03, 1)
 Window.size = (360, 640)
 
 # ==========================================
-# DEFINICIÓN DE LA ESTÉTICA (Lenguaje KV)
+# LÓGICA DE RED (Protocolo A2S de Valve)
+# ==========================================
+def get_server_info(ip, port):
+    """Consulta básica a un servidor Source usando Sockets puros."""
+    QUERY = b'\xFF\xFF\xFF\xFFTSource Engine Query\x00'
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2.5)
+        sock.sendto(QUERY, (ip, int(port)))
+        data, _ = sock.recvfrom(4096)
+        sock.close()
+
+        # Parseo simple del paquete A2S_INFO
+        content = data[6:]
+        name, end = content.split(b'\x00', 1)
+        map_name, end = end.split(b'\x00', 1)
+        folder, end = end.split(b'\x00', 1)
+        game, end = end.split(b'\x00', 1)
+        
+        # Jugadores y Max Jugadores están en los siguientes bytes
+        players = end[2]
+        max_players = end[3]
+        
+        return {
+            "name": name.decode('utf-8', 'ignore'),
+            "players": f"{players}/{max_players}",
+            "map": map_name.decode('utf-8', 'ignore'),
+            "ip": f"{ip}:{port}"
+        }
+    except Exception as e:
+        print(f"Error en {ip}:{port} -> {e}")
+        return None
+
+# ==========================================
+# DISEÑO VISUAL (KV Language)
 # ==========================================
 KV = """
-# Definimos colores globales para reusar
-#:set color_back [0.02, 0.02, 0.03, 1]      # Fondo Profundo
-#:set color_neon [0.0, 1.0, 0.25, 1]       # Verde Neón Koda
-#:set color_neon_dim [0.0, 1.0, 0.25, 0.2] # Neón atenuado para bordes
+#:set color_back [0.02, 0.02, 0.03, 1]
+#:set color_neon [0.0, 1.0, 0.25, 1]
+#:set color_neon_dim [0.0, 1.0, 0.25, 0.2]
 
-# --- Estilo Global para Botones Tácticos ---
 <TacticalButton@Button>:
     background_normal: ''
     background_down: ''
-    background_color: [0, 0, 0, 0] # Hacemos el fondo nativo invisible
-    color: color_neon              # Texto en neón
-    font_size: '16sp'
+    background_color: [0, 0, 0, 0]
+    color: color_neon
     bold: True
     size_hint_y: None
     height: '55dp'
-    
-    # Dibujamos el borde neón manualmente
     canvas.before:
         Color:
-            rgba: color_neon if self.state == 'normal' else [1, 1, 1, 0.1]
+            rgba: color_neon if self.state == 'normal' else [1, 1, 1, 0.2]
         Line:
-            width: 1.5 if self.state == 'normal' else 2
+            width: 1.2
             rectangle: (self.x, self.y, self.width, self.height)
-            
-        # Efecto de 'resplandor' (Glow) suave detrás del borde
-        Color:
-            rgba: color_neon_dim if self.state == 'normal' else [1, 1, 1, 0.05]
-        Line:
-            width: 3
-            rectangle: (self.x-1, self.y-1, self.width+2, self.height+2)
 
-# --- Estilo para Tarjetas de Servidor ---
-<ServerCard@BoxLayout>:
+<ServerCard>:
     orientation: 'horizontal'
     size_hint_y: None
     height: '80dp'
     padding: '10dp'
     spacing: '10dp'
-    server_name: ''
-    server_ip: ''
-    player_count: ''
-    
-    # Borde de la tarjeta
     canvas.before:
         Color:
-            rgba: [0.1, 0.1, 0.15, 1] # Fondo de la tarjeta un poco más claro
+            rgba: [0.05, 0.05, 0.1, 1]
         Rectangle:
             pos: self.pos
             size: self.size
@@ -68,32 +87,34 @@ KV = """
             width: 1
             rectangle: (self.x, self.y, self.width, self.height)
 
-    Label:
-        text: root.server_name
-        text_size: self.size
-        halign: 'left'
-        valign: 'middle'
-        color: [1, 1, 1, 1]
-        bold: True
-        font_size: '16sp'
+    BoxLayout:
+        orientation: 'vertical'
         size_hint_x: 0.7
-        
+        Label:
+            text: root.server_name
+            bold: True
+            halign: 'left'
+            text_size: self.size
+        Label:
+            text: root.server_ip
+            font_size: '11sp'
+            color: [0.5, 0.5, 0.5, 1]
+            halign: 'left'
+            text_size: self.size
+
     BoxLayout:
         orientation: 'vertical'
         size_hint_x: 0.3
         Label:
             text: root.player_count
             color: color_neon
-            font_size: '20sp'
+            font_size: '18sp'
             bold: True
         Label:
             text: "PLAYERS"
-            color: [0.6, 0.6, 0.6, 1]
-            font_size: '10sp'
+            font_size: '9sp'
+            color: [0.4, 0.4, 0.4, 1]
 
-# ==========================================
-# DEFINICIÓN DE PANTALLAS (Lógica)
-# ==========================================
 ScreenManager:
     MenuScreen:
     ServerListScreen:
@@ -102,111 +123,103 @@ ScreenManager:
     name: 'menu'
     BoxLayout:
         orientation: 'vertical'
-        padding: ['20dp', '60dp', '20dp', '20dp']
+        padding: ['20dp', '60dp', '20dp', '40dp']
         spacing: '20dp'
 
-        # Logo/Título Táctico
         Label:
             text: "KODA\\nTACTICAL"
-            font_size: '40sp'
+            font_size: '42sp'
             bold: True
             color: color_neon
             halign: 'center'
-            valign: 'middle'
-            size_hint_y: None
-            height: '120dp'
-            # Efecto de texto 'Cyber' (opcional si tienes la fuente)
-            # font_name: 'path/to/cyber_font.ttf' 
-
-        # Subtítulo/Estado
+        
         Label:
-            text: "OPERATOR_ID: TRISKANV | STATUS: ONLINE"
+            text: "SYSTEM STATUS: SECURE"
             font_size: '12sp'
-            color: [0.5, 0.5, 0.5, 1]
-            size_hint_y: None
-            height: '30dp'
+            color: [0.4, 0.4, 0.4, 1]
 
-        Widget: # Espaciador flexible
+        Widget:
 
-        # Botones Principales
         TacticalButton:
-            text: "BUSCAR SERVIDORES"
+            text: "SCAN SERVERS"
             on_release: app.root.current = 'servers'
-            
-        TacticalButton:
-            text: "ESTADO DE RED"
-            color: [0.5, 0.5, 0.5, 1] # Deshabilitado estéticamente
-            
-        TacticalButton:
-            text: "CONFIGURACIÓN"
-            color: [0.5, 0.5, 0.5, 1] # Deshabilitado estéticamente
 
 <ServerListScreen>:
     name: 'servers'
     BoxLayout:
         orientation: 'vertical'
         
-        # Barra superior (Header)
         BoxLayout:
             size_hint_y: None
             height: '60dp'
             padding: '10dp'
-            canvas.before:
-                Color:
-                    rgba: [0, 0, 0, 0.3]
-                Rectangle:
-                    pos: self.pos
-                    size: self.size
-            
             Button:
                 text: "< VOLVER"
-                size_hint_x: None
-                width: '80dp'
                 background_color: [0,0,0,0]
                 color: color_neon
                 on_release: app.root.current = 'menu'
-            
             Label:
-                text: "LISTA DE SERVIDORES"
+                text: "LIVE FEED"
                 bold: True
                 color: color_neon
-                font_size: '18sp'
 
-        # Contenedor de la lista (Aquí irían los datos reales)
         ScrollView:
             BoxLayout:
+                id: server_container
                 orientation: 'vertical'
                 padding: '15dp'
-                spacing: '10dp'
+                spacing: '12dp'
                 size_hint_y: None
                 height: self.minimum_height
-                
-                # Ejemplos estéticos de cómo se verían los servidores
-                ServerCard:
-                    server_name: "KODA | OFICIAL [ARG]"
-                    player_count: "24/32"
-                ServerCard:
-                    server_name: "LATAM TACTICAL | DUST2"
-                    player_count: "12/16"
-                ServerCard:
-                    server_name: "RESERVA KODA [PRIVADO]"
-                    player_count: "0/10"
-                    
 """
 
 # ==========================================
-# CLASES DE PYTHON
+# CLASES Y WIDGETS
 # ==========================================
+class ServerCard(App.get_running_app().root.__class__ if App.get_running_app() else Screen):
+    # Esto es un truco para que el KV reconozca las propiedades
+    pass
+
+from kivy.uix.boxlayout import BoxLayout
+class ServerCard(BoxLayout):
+    server_name = StringProperty('')
+    server_ip = StringProperty('')
+    player_count = StringProperty('')
+
 class MenuScreen(Screen):
     pass
 
 class ServerListScreen(Screen):
-    pass
+    def on_enter(self):
+        # Limpiamos la lista y empezamos a escanear
+        self.ids.server_container.clear_widgets()
+        Thread(target=self.scan_servers_thread, daemon=True).start()
+
+    def scan_servers_thread(self):
+        # --- LISTA DE TUS SERVIDORES (IP, PORT) ---
+        # Cámbialos por los servidores reales que quieras monitorear
+        targets = [
+            ("45.235.98.50", 27015), 
+            ("45.235.98.50", 27016),
+            ("181.119.141.22", 27015)
+        ]
+
+        for ip, port in targets:
+            data = get_server_info(ip, port)
+            if data:
+                self.add_card_to_ui(data)
+
+    @mainthread
+    def add_card_to_ui(self, data):
+        card = ServerCard(
+            server_name=data['name'],
+            server_ip=data['ip'],
+            player_count=data['players']
+        )
+        self.ids.server_container.add_widget(card)
 
 class KodaTacticalApp(App):
     def build(self):
-        self.title = "Koda Tactical"
-        # Cargamo
         return Builder.load_string(KV)
 
 if __name__ == '__main__':
