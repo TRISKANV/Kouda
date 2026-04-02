@@ -7,28 +7,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ESTO ES NUEVO: Guarda el progreso para que no tarde 20 min siempre
+      # 1. Caché para no descargar el SDK/NDK en cada commit
       - name: Cache Buildozer
         uses: actions/cache@v3
         with:
           path: .buildozer
           key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
+      # 2. Instalación de dependencias para Ubuntu 24.04
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses6 libncursesw6 cmake libffi-dev libssl-dev python3-pip
+          sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev \
+          libncurses6 libncursesw6 cmake libffi-dev libssl-dev python3-pip python3-setuptools
           pip3 install --user --upgrade Cython==0.29.33 virtualenv buildozer
 
+      # 3. Compilación y aceptación forzada de licencias
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # Usamos 'debug' para que sea más rápido
-          buildozer android debug
+          # Forzamos la aceptación de licencias antes de empezar
+          mkdir -p ~/.android && touch ~/.android/repositories.cfg
+          # buildozer android debug descarga el SDK, luego aceptamos todo
+          buildozer android debug || true 
+          # Este comando asegura que todas las licencias se acepten si falló el anterior
+          yes | buildozer android debug
         env:
           ACCEPT_SDK_LICENSE: "y"
-          BUILDOZER_WARN_ON_ROOT: "0"
+          BUILDOZER_ALLOW_ORG_TEST: "1"
 
+      # 4. Subida del archivo APK listo para descargar
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
