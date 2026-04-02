@@ -7,14 +7,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Gestión de Caché: Acelera los builds futuros
+      # 1. Caché para acelerar futuros builds
       - name: Cache Buildozer
         uses: actions/cache@v3
         with:
           path: .buildozer
           key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
-      # 2. Dependencias de Sistema para Ubuntu 24.04 (Noble Numbat)
+      # 2. Dependencias de Sistema (Ubuntu 24.04)
       - name: Install Dependencies
         run: |
           sudo apt update
@@ -23,21 +23,20 @@ jobs:
           libltdl-dev libgmp-dev
           pip3 install --user --upgrade Cython==0.29.33 virtualenv buildozer
 
-      # 3. Proceso de Compilación Profesional
+      # 3. Compilación con manejo de errores de limpieza
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # Limpiamos archivos temporales que causan el error de 'gcc'
-          buildozer android clean
-          # Compilamos en modo debug (más ligero y rápido)
+          # El '|| true' evita el error 'FileNotFoundError' si es el primer build
+          buildozer android clean || true
+          # Ahora sí, la compilación real
           buildozer android debug
         env:
-          # Variables para forzar la aceptación de términos de Google
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
           BUILDOZER_ALLOW_ORG_TEST: "1"
           ACCEPT_SDK_LICENSE: "y"
 
-      # 4. Entrega del APK
+      # 4. Artefacto final
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
