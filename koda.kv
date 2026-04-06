@@ -1,42 +1,96 @@
-BoxLayout:
-    orientation: 'vertical'
-    canvas.before:
-        Color:
-            rgba: 0.05, 0.05, 0.06, 1
-        Rectangle:
-            pos: self.pos
-            size: self.size
+# Archivo: koda.kv
 
-    # Header
-    BoxLayout:
-        size_hint_y: None
-        height: "80dp"
-        padding: "20dp"
-        Label:
-            text: "KODA"
-            font_size: "32sp"
+<ServerCard>:
+    orientation: "horizontal"
+    size_hint_y: None
+    height: "90dp"
+    padding: "15dp"
+    radius: [15, ]
+    md_bg_color: app.card_color
+    elevation: 2
+    ripple_behavior: True
+
+    MDBoxLayout:
+        orientation: "vertical"
+        adaptive_height: True
+        pos_hint: {"center_y": .5}
+        
+        MDLabel:
+            text: root.server_name
+            font_style: "H6"
             bold: True
-            color: 1, 1, 1, 1
-            halign: 'left'
+            theme_text_color: "Custom"
+            text_color: 1, 1, 1, 1
+        MDLabel:
+            text: root.server_map
+            font_style: "Caption"
+            theme_text_color: "Custom"
+            text_color: app.text_dim
 
-    # Tabs (CS 1.6 / GO / HL)
-    BoxLayout:
-        size_hint_y: None
-        height: "120dp"
-        # Aquí irían tus botones con las imágenes de assets/
+    MDBoxLayout:
+        orientation: "vertical"
+        adaptive_width: True
+        pos_hint: {"center_y": .5}
+        
+        MDLabel:
+            text: root.player_count
+            halign: "right"
+            bold: True
+            theme_text_color: "Custom"
+            text_color: app.neon_orange
+        MDLabel:
+            text: "35ms"
+            font_style: "Caption"
+            halign: "right"
+            theme_text_color: "Custom"
+            text_color: app.text_dim
+
+MDScreenManager:
+    MenuScreen:
+    ServerListScreen:
+
+<MenuScreen>:
+    name: 'menu'
+    md_bg_color: app.bg_dark
     
-    # Input Area
-    TextInput:
-        id: ip_input
-        hint_text: "IP:PUERTO"
-        size_hint_y: None
-        height: "50dp"
-        background_color: 0.1, 0.1, 0.1, 1
-        foreground_color: 1, 0.55, 0, 1
+    MDBoxLayout:
+        orientation: 'vertical'
+        padding: '40dp'
+        spacing: '30dp'
+        
+        MDLabel:
+            text: "KOUDA\\nTACTICAL"
+            font_style: "H3"
+            halign: "center"
+            bold: True
+            theme_text_color: "Custom"
+            text_color: app.neon_orange
 
-    ScrollView:
-        BoxLayout:
-            id: container
-            orientation: 'vertical'
-            size_hint_y: None
-            height: self.minimum_height
+        MDRaisedButton:
+            text: "SCAN SERVERS"
+            size_hint_x: 1
+            height: "60dp"
+            md_bg_color: app.neon_orange
+            text_color: 0, 0, 0, 1
+            on_release: root.manager.current = 'servers'
+
+<ServerListScreen>:
+    name: 'servers'
+    md_bg_color: app.bg_dark
+    
+    MDBoxLayout:
+        orientation: 'vertical'
+        
+        MDTopAppBar:
+            title: "Server Hub"
+            elevation: 0
+            md_bg_color: app.bg_dark
+            left_action_items: [["arrow-left", lambda x: app.go_back()]]
+
+        MDScrollView:
+            MDBoxLayout:
+                id: container
+                orientation: 'vertical'
+                adaptive_height: True
+                padding: "20dp"
+                spacing: "12dp"
