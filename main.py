@@ -3,11 +3,10 @@ from threading import Thread
 from kivymd.app import MDApp
 from kivy.lang import Builder
 from kivy.uix.screenmanager import Screen
-from kivy.core.window import Window
 from kivy.clock import mainthread
 from kivy.utils import get_color_from_hex
 from kivymd.uix.card import MDCard
-from kivy.properties import StringProperty
+from kivy.properties import StringProperty, ColorProperty
 
 # --- LÓGICA DE RED ---
 def get_server_info(ip, port):
@@ -31,6 +30,32 @@ def get_server_info(ip, port):
 
 # --- DISEÑO KV ---
 KV = """
+<GameCard>:
+    orientation: "vertical"
+    size_hint: None, None
+    size: "140dp", "180dp"
+    radius: [20, ]
+    padding: "15dp"
+    md_bg_color: root.bg_color
+    elevation: 3
+    line_color: (1, 1, 1, 0.1)
+
+    MDIcon:
+        icon: root.icon_name
+        font_size: "50sp"
+        halign: "center"
+        theme_text_color: "Custom"
+        text_color: 1, 1, 1, 1
+        pos_hint: {"center_x": .5}
+
+    MDLabel:
+        text: root.game_name
+        halign: "center"
+        bold: True
+        font_style: "Button"
+        theme_text_color: "Custom"
+        text_color: 1, 1, 1, 1
+
 <ServerCard>:
     orientation: "horizontal"
     size_hint_y: None
@@ -39,7 +64,6 @@ KV = """
     radius: [20, ]
     md_bg_color: app.card_color
     elevation: 2
-    ripple_behavior: True
 
     MDBoxLayout:
         orientation: "vertical"
@@ -87,7 +111,6 @@ MDScreenManager:
         spacing: '30dp'
         
         MDLabel:
-            # CAMBIO AQUÍ: Nuevo texto de bienvenida
             text: "BIENVENIDO\\nA KOUDA"
             font_style: "H3"
             halign: "center"
@@ -108,19 +131,69 @@ MDScreenManager:
     md_bg_color: app.bg_dark
     MDBoxLayout:
         orientation: 'vertical'
+        
         MDTopAppBar:
             title: "Server Hub"
             elevation: 0
             md_bg_color: app.bg_dark
             left_action_items: [["arrow-left", lambda x: app.go_back()]]
+
         MDScrollView:
             MDBoxLayout:
-                id: container
                 orientation: 'vertical'
                 adaptive_height: True
                 padding: "20dp"
-                spacing: "12dp"
+                spacing: "20dp"
+
+                # CARRUSEL DE JUEGOS
+                MDScrollView:
+                    size_hint_y: None
+                    height: "200dp"
+                    bar_width: 0
+                    MDBoxLayout:
+                        orientation: "horizontal"
+                        adaptive_width: True
+                        spacing: "15dp"
+                        padding: [0, "10dp"]
+
+                        GameCard:
+                            game_name: "CS 1.6"
+                            icon_name: "target-variant"
+                            bg_color: 0.2, 0.25, 0.15, 1 # Verde oliva
+                        
+                        GameCard:
+                            game_name: "CS:GO"
+                            icon_name: "pistol"
+                            bg_color: 0.1, 0.15, 0.25, 1 # Azul oscuro
+
+                        GameCard:
+                            game_name: "HALF-LIFE"
+                            icon_name: "lambda"
+                            bg_color: 0.1, 0.1, 0.1, 1 # Negro/Naranja
+                        
+                        GameCard:
+                            game_name: "TEAM FORTRESS 2"
+                            icon_name: "account-group"
+                            bg_color: 0.3, 0.15, 0.1, 1 # Terracota
+
+                # LISTA DE SERVIDORES
+                MDLabel:
+                    text: "CS 1.3 Servers"
+                    font_style: "H6"
+                    bold: True
+                    adaptive_height: True
+
+                MDBoxLayout:
+                    id: container
+                    orientation: 'vertical'
+                    adaptive_height: True
+                    spacing: "12dp"
 """
+
+class GameCard(MDCard):
+    game_name = StringProperty()
+    icon_name = StringProperty()
+    bg_color = ColorProperty()
 
 class ServerCard(MDCard):
     server_name = StringProperty()
