@@ -1,6 +1,6 @@
 import socket
 from threading import Thread
-from kivymd.app import MDApp # <--- IMPORTANTE: MDApp, no App
+from kivymd.app import MDApp
 from kivy.lang import Builder
 from kivy.uix.screenmanager import Screen
 from kivy.core.window import Window
@@ -9,7 +9,7 @@ from kivy.utils import get_color_from_hex
 from kivymd.uix.card import MDCard
 from kivy.properties import StringProperty
 
-# --- LÓGICA DE RED (Tuya, sin cambios) ---
+# --- LÓGICA DE RED ---
 def get_server_info(ip, port):
     QUERY = b'\xFF\xFF\xFF\xFFTSource Engine Query\x00'
     try:
@@ -29,7 +29,7 @@ def get_server_info(ip, port):
     except:
         return None
 
-# --- UI (Estética Neon/Dark de la foto) ---
+# --- DISEÑO KV (Estilo de la imagen) ---
 KV = """
 <ServerCard>:
     orientation: "horizontal"
@@ -85,6 +85,7 @@ MDScreenManager:
         orientation: 'vertical'
         padding: '40dp'
         spacing: '30dp'
+        
         MDLabel:
             text: "KOUDA\\nTACTICAL"
             font_style: "H3"
@@ -92,6 +93,7 @@ MDScreenManager:
             bold: True
             theme_text_color: "Custom"
             text_color: app.neon_orange
+
         MDRaisedButton:
             text: "SCAN SERVERS"
             size_hint_x: 1
@@ -132,6 +134,7 @@ class ServerListScreen(Screen):
         Thread(target=self.run_scan, daemon=True).start()
 
     def run_scan(self):
+        # IPs de prueba
         test_ips = [("45.235.98.50", 27015), ("181.119.141.22", 27015)]
         for ip, port in test_ips:
             info = get_server_info(ip, port)
@@ -146,10 +149,9 @@ class ServerListScreen(Screen):
         )
         self.ids.container.add_widget(card)
 
-class KoudaApp(MDApp): # <--- MDApp aquí es la clave
+class KoudaApp(MDApp):
     def build(self):
         self.theme_cls.theme_style = "Dark"
-        # Definimos los colores de la imagen
         self.bg_dark = get_color_from_hex("#121212")
         self.card_color = get_color_from_hex("#1E1E1E")
         self.neon_orange = get_color_from_hex("#FF6B00")
