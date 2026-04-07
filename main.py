@@ -29,7 +29,7 @@ def get_server_info(ip, port):
     except:
         return None
 
-# --- DISEÑO KV (Estilo de la imagen) ---
+# --- DISEÑO KV ---
 KV = """
 <ServerCard>:
     orientation: "horizontal"
@@ -87,7 +87,8 @@ MDScreenManager:
         spacing: '30dp'
         
         MDLabel:
-            text: "KOUDA\\nTACTICAL"
+            # CAMBIO AQUÍ: Nuevo texto de bienvenida
+            text: "BIENVENIDO\\nA KOUDA"
             font_style: "H3"
             halign: "center"
             bold: True
@@ -134,7 +135,6 @@ class ServerListScreen(Screen):
         Thread(target=self.run_scan, daemon=True).start()
 
     def run_scan(self):
-        # IPs de prueba
         test_ips = [("45.235.98.50", 27015), ("181.119.141.22", 27015)]
         for ip, port in test_ips:
             info = get_server_info(ip, port)
