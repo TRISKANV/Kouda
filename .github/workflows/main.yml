@@ -3,7 +3,6 @@ on: [push]
 
 jobs:
   build:
-    # Cambiamos a 22.04 para asegurar compatibilidad con el NDK y Cython
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -22,17 +21,17 @@ jobs:
 
       - name: Install Buildozer and Cython
         run: |
-          # Usamos una versión estable de Cython para Kivy
           pip3 install --user --upgrade "Cython<3.0.0" virtualenv buildozer
           export PATH=$PATH:~/.local/bin
 
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # Limpiamos variables que confunden a Buildozer en GitHub Actions
-          unset ANDROID_NDK_HOME
+          # ELIMINAMOS las rutas intrusas de GitHub que causan el error
           unset ANDROID_SDK_ROOT
-          # Ejecutamos el build con verbosidad para ver errores si ocurren
+          unset ANDROID_NDK_HOME
+          unset ANDROID_HOME
+          # Forzamos el build limpio
           buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
