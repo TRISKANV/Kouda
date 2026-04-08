@@ -3,24 +3,36 @@ on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Cambiamos a 22.04 para asegurar compatibilidad con el NDK y Cython
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Install System Dependencies
         run: |
           sudo apt update
           sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev \
-          libncurses6 libncursesw6 cmake libffi-dev libssl-dev python3-pip python3-setuptools \
-          libltdl-dev libgmp-dev libsqlite3-dev
-          pip3 install --user --upgrade Cython==0.29.33 virtualenv buildozer
+          libncurses5 libncursesw5 cmake libffi-dev libssl-dev python3-pip python3-setuptools \
+          libltdl-dev libgmp-dev libsqlite3-dev openjdk-17-jdk
+
+      - name: Install Buildozer and Cython
+        run: |
+          # Usamos una versión estable de Cython para Kivy
+          pip3 install --user --upgrade "Cython<3.0.0" virtualenv buildozer
+          export PATH=$PATH:~/.local/bin
 
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # EL TRUCO: Borramos la variable que apunta al NDK intruso de GitHub
+          # Limpiamos variables que confunden a Buildozer en GitHub Actions
           unset ANDROID_NDK_HOME
-          # Forzamos a Buildozer a descargar su propio NDK limpio
+          unset ANDROID_SDK_ROOT
+          # Ejecutamos el build con verbosidad para ver errores si ocurren
           buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
