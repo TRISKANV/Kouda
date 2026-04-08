@@ -41,16 +41,15 @@ KV = """
     radius: [20, ]
     md_bg_color: root.bg_color
     elevation: 4
-    shadow_softness: 12
     FitImage:
         source: root.image_path
         radius: [20, 20, 0, 0]
         size_hint_y: 0.75
+        allow_stretch: True
     MDLabel:
         text: root.game_name
         halign: "center"
         bold: True
-        font_style: "Caption"
         theme_text_color: "Custom"
         text_color: 1, 1, 1, 1
         size_hint_y: 0.25
@@ -62,13 +61,11 @@ KV = """
     padding: "15dp"
     radius: [15, ]
     md_bg_color: app.card_color
-    elevation: 1
     MDBoxLayout:
         orientation: "vertical"
         MDLabel:
             text: root.server_name
             bold: True
-            font_style: "Subtitle1"
             theme_text_color: "Custom"
             text_color: 1, 1, 1, 1
         MDLabel:
@@ -87,9 +84,6 @@ KV = """
             text_color: app.neon_orange
         MDIconButton:
             icon: "trash-can-outline"
-            icon_size: "18sp"
-            theme_text_color: "Custom"
-            text_color: 0.8, 0.2, 0.2, 1
             on_release: app.remove_server(root.server_ip)
 
 MDScreenManager:
@@ -114,7 +108,6 @@ MDScreenManager:
             text: "SCAN SERVERS"
             size_hint_x: 0.8
             pos_hint: {"center_x": .5}
-            height: "56dp"
             md_bg_color: app.neon_orange
             text_color: 0, 0, 0, 1
             on_release: root.manager.current = 'servers'
@@ -124,15 +117,10 @@ MDScreenManager:
     md_bg_color: app.bg_dark
     MDBoxLayout:
         orientation: 'vertical'
-        
         MDTopAppBar:
             title: "KOUDA HUB"
-            anchor_title: "left"
             md_bg_color: app.bg_dark
-            elevation: 0
             left_action_items: [["chevron-left", lambda x: app.go_back()]]
-
-        # CARRUSEL FIJO (No se mueve con el scroll de abajo)
         MDBoxLayout:
             size_hint_y: None
             height: "220dp"
@@ -144,17 +132,6 @@ MDScreenManager:
                     orientation: "horizontal"
                     adaptive_width: True
                     spacing: "15dp"
-                    padding: [0, "10dp", "20dp", "10dp"]
-
-        # LISTA CON SCROLL INDEPENDIENTE
-        MDLabel:
-            text: "TUS SERVIDORES"
-            font_style: "Overline"
-            theme_text_color: "Custom"
-            text_color: app.text_dim
-            padding: ["24dp", "10dp"]
-            adaptive_height: True
-
         MDScrollView:
             MDBoxLayout:
                 id: container
@@ -162,7 +139,6 @@ MDScreenManager:
                 adaptive_height: True
                 padding: "20dp"
                 spacing: "12dp"
-
     MDFloatingActionButton:
         icon: "plus"
         md_bg_color: app.neon_orange
@@ -185,11 +161,11 @@ class KoudaApp(MDApp):
     dialog = None
     
     def build(self):
+        # Rutas dinámicas para Android
         self.storage_file = os.path.join(self.user_data_dir, "servers.json")
         self.assets_path = os.path.join(os.path.dirname(__file__), "assets")
-        self.theme_cls.theme_style = "Dark"
-        self.theme_cls.primary_palette = "Orange"
         
+        self.theme_cls.theme_style = "Dark"
         self.bg_dark = get_color_from_hex("#0F0F0F")
         self.card_color = get_color_from_hex("#1A1A1A")
         self.neon_orange = get_color_from_hex("#FF6B00")
@@ -203,21 +179,29 @@ class KoudaApp(MDApp):
 
     def setup_game_cards(self):
         carousel = self.root.get_screen('servers').ids.game_carousel
+        # VERIFICÁ QUE ESTOS NOMBRES SEAN IGUALES A TUS ARCHIVOS
         games = [
             ("CS 1.6", "cs16.png", "#2D3E2F"),
-            ("CS:GO / CS2", "csgo.png", "#1B2838"),
+            ("CS:GO", "csgo.png", "#1B2838"),
             ("HALF-LIFE", "hl.png", "#4B2D1F"),
             ("TF2", "tf2.png", "#392A23")
         ]
         for name, img, color in games:
             path = os.path.join(self.assets_path, img)
-            carousel.add_widget(GameCard(game_name=name, image_path=path, bg_color=get_color_from_hex(color)))
+            # MODO A PRUEBA DE FALLOS: Si no existe la foto, no crashees
+            if not os.path.exists(path):
+                path = "" # FitImage ignorará el source vacío en lugar de explotar
+                
+            carousel.add_widget(GameCard(
+                game_name=name, 
+                image_path=path, 
+                bg_color=get_color_from_hex(color)
+            ))
 
     def refresh_list(self):
         container = self.root.get_screen('servers').ids.container
         container.clear_widgets()
-        servers = self.load_servers()
-        for addr in servers:
+        for addr in self.load_servers():
             Thread(target=self.fetch_and_add, args=(addr,), daemon=True).start()
 
     def fetch_and_add(self, addr):
@@ -230,21 +214,26 @@ class KoudaApp(MDApp):
             ServerCard(server_name=info['name'], server_map=info['map'], player_count=info['players'], server_ip=info['ip'])
         )
 
-    # --- DIÁLOGO PROFESIONAL ---
+    def load_servers(self):
+        try:
+            if os.path.exists(self.storage_file):
+                with open(self.storage_file, "r") as f: return json.load(f)
+        except: pass
+        return ["45.235.98.50:27015"]
+
+    def save_servers(self, data):
+        try:
+            with open(self.storage_file, "w") as f: json.dump(data, f)
+        except: pass
+
     def show_add_dialog(self):
-        self.field = MDTextField(
-            hint_text="Dirección IP:Puerto",
-            helper_text="Ejemplo: 45.235.98.50:27015",
-            helper_text_mode="on_focus",
-            mode="round",
-            line_color_focus=self.neon_orange
-        )
+        self.field = MDTextField(hint_text="IP:Puerto", mode="round")
         self.dialog = MDDialog(
             title="Nuevo Servidor",
             type="custom",
             content_cls=self.field,
             buttons=[
-                MDFlatButton(text="CANCELAR", theme_text_color="Custom", text_color=self.neon_orange, on_release=lambda x: self.dialog.dismiss()),
+                MDFlatButton(text="CANCELAR", on_release=lambda x: self.dialog.dismiss()),
                 MDRaisedButton(text="AGREGAR", md_bg_color=self.neon_orange, on_release=self.add_server_from_dialog),
             ],
         )
@@ -253,20 +242,12 @@ class KoudaApp(MDApp):
     def add_server_from_dialog(self, *args):
         val = self.field.text.strip()
         if ":" in val:
-            servers = self.load_servers()
-            if val not in servers:
-                servers.append(val)
-                self.save_servers(servers)
+            s = self.load_servers()
+            if val not in s:
+                s.append(val)
+                self.save_servers(s)
                 self.refresh_list()
             self.dialog.dismiss()
-
-    def load_servers(self):
-        try:
-            with open(self.storage_file, "r") as f: return json.load(f)
-        except: return []
-
-    def save_servers(self, data):
-        with open(self.storage_file, "w") as f: json.dump(data, f)
 
     def remove_server(self, ip):
         s = self.load_servers()
