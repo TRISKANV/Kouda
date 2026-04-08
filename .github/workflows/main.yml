@@ -27,11 +27,15 @@ jobs:
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # ELIMINAMOS las rutas intrusas de GitHub que causan el error
+          # LIMPIEZA DE VARIABLES DE ENTORNO
           unset ANDROID_SDK_ROOT
           unset ANDROID_NDK_HOME
           unset ANDROID_HOME
-          # Forzamos el build limpio
+          
+          # LIMPIAR LOGS ANTERIORES PARA EVITAR "DIRTY BUILDS"
+          rm -rf .buildozer
+          
+          # FORZAR DESCARGA LIMPIA DEL NDK
           buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
