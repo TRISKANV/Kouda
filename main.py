@@ -30,7 +30,8 @@ def get_server_info(address):
             "players": f"{parts[4][0]}/{parts[4][1]}",
             "ip": address
         }
-    except: return None
+    except:
+        return None
 
 # --- DISEÑO KV ---
 KV = """
@@ -179,7 +180,6 @@ class KoudaApp(MDApp):
 
     def setup_game_cards(self):
         carousel = self.root.get_screen('servers').ids.game_carousel
-        # VERIFICÁ QUE ESTOS NOMBRES SEAN IGUALES A TUS ARCHIVOS
         games = [
             ("CS 1.6", "cs16.png", "#2D3E2F"),
             ("CS:GO", "csgo.png", "#1B2838"),
@@ -188,15 +188,9 @@ class KoudaApp(MDApp):
         ]
         for name, img, color in games:
             path = os.path.join(self.assets_path, img)
-            # MODO A PRUEBA DE FALLOS: Si no existe la foto, no crashees
             if not os.path.exists(path):
-                path = "" # FitImage ignorará el source vacío en lugar de explotar
-                
-            carousel.add_widget(GameCard(
-                game_name=name, 
-                image_path=path, 
-                bg_color=get_color_from_hex(color)
-            ))
+                path = ""
+            carousel.add_widget(GameCard(game_name=name, image_path=path, bg_color=get_color_from_hex(color)))
 
     def refresh_list(self):
         container = self.root.get_screen('servers').ids.container
@@ -206,7 +200,8 @@ class KoudaApp(MDApp):
 
     def fetch_and_add(self, addr):
         info = get_server_info(addr)
-        if info: self.add_ui(info)
+        if info:
+            self.add_ui(info)
 
     @mainthread
     def add_ui(self, info):
@@ -217,14 +212,18 @@ class KoudaApp(MDApp):
     def load_servers(self):
         try:
             if os.path.exists(self.storage_file):
-                with open(self.storage_file, "r") as f: return json.load(f)
-        except: pass
+                with open(self.storage_file, "r") as f:
+                    return json.load(f)
+        except:
+            pass
         return ["45.235.98.50:27015"]
 
     def save_servers(self, data):
         try:
-            with open(self.storage_file, "w") as f: json.dump(data, f)
-        except: pass
+            with open(self.storage_file, "w") as f:
+                json.dump(data, f)
+        except:
+            pass
 
     def show_add_dialog(self):
         self.field = MDTextField(hint_text="IP:Puerto", mode="round")
@@ -256,7 +255,8 @@ class KoudaApp(MDApp):
             self.save_servers(s)
             self.refresh_list()
 
-    def go_back(self): self.root.current = 'menu'
+    def go_back(self):
+        self.root.current = 'menu'
 
 if __name__ == '__main__':
     KoudaApp().run()
