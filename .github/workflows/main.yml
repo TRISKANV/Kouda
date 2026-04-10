@@ -15,10 +15,12 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt update
+          # Instalamos librerías de compatibilidad de 32 bits y dependencias de compilación
           sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev \
           libncurses5-dev libncursesw5-dev libncurses6 libncursesw6 \
           libtinfo5 cmake libffi-dev libssl-dev python3-pip python3-setuptools \
-          libltdl-dev libgmp-dev libsqlite3-dev openjdk-17-jdk
+          libltdl-dev libgmp-dev libsqlite3-dev openjdk-17-jdk \
+          lib32stdc++6 lib32z1
 
       - name: Install Buildozer and Cython
         run: |
@@ -28,11 +30,12 @@ jobs:
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # Forzamos el uso de las herramientas de Android de GitHub
-          export ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT
-          export ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME
+          # Limpieza total de variables que confunden al NDK automático
+          unset ANDROID_SDK_ROOT
+          unset ANDROID_NDK_HOME
+          unset ANDROID_HOME
           
-          # Borramos la carpeta corrupta de intentos anteriores
+          # Borramos la carpeta .buildozer por última vez para asegurar que baje el NDK estable
           rm -rf .buildozer
           
           buildozer -v android debug
