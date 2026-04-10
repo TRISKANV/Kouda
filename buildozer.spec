@@ -6,7 +6,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,json
 version = 1.0.1
 
-# REQUERIMIENTOS LIMPIOS (Sin hostpython3)
+# REQUERIMIENTOS
 requirements = python3, kivy==2.3.0, kivymd, pillow, certifi
 
 orientation = portrait
@@ -16,13 +16,13 @@ android.archs = arm64-v8a, armeabi-v7a
 android.allow_backup = True
 android.permissions = INTERNET
 
-# VERSIONES ESTABLES
+# VERSIONES DE MÁXIMA COMPATIBILIDAD
 android.api = 33
 android.minapi = 21
-android.ndk = 25b
+# Cambiamos a r23b porque la r25b está fallando en el runner de GitHub
+android.ndk = 23b
 android.accept_sdk_license = True
 
-# ESTO ES LO QUE FALTABA: Forzar la descarga si no existe
 android.skip_update = False
 android.force_build = False
 
