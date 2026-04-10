@@ -22,18 +22,15 @@ jobs:
 
       - name: Install Buildozer and Cython
         run: |
-          # Instalamos una versión específica de buildozer para evitar el error de 'hostpython'
-          pip3 install --user --upgrade "buildozer==1.5.0" "Cython<3.0.0" virtualenv
+          # Cython 0.29.33 es la versión recomendada para evitar errores de compilación
+          pip3 install --user --upgrade "buildozer==1.5.0" "Cython==0.29.33" virtualenv
           export PATH=$PATH:~/.local/bin
 
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          unset ANDROID_SDK_ROOT
-          unset ANDROID_NDK_HOME
-          unset ANDROID_HOME
-          # Usamos 'yes' para aceptar licencias automáticamente si pregunta
-          yes | buildozer -v android debug
+          # En lugar de unset, apuntamos a una carpeta local del runner para que no haya conflictos de permisos
+          buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
           BUILDOZER_ALLOW_ORG_TEST: "1"
