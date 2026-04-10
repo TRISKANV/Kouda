@@ -5,18 +5,13 @@ package.domain = org.triskanv
 source.dir = .
 source.include_exts = py,png,jpg,kv,json
 version = 1.0.1
-
-# REQUIREMENTS: Muy importante NO poner hostpython3
 requirements = python3, kivy==2.3.0, kivymd, pillow, certifi
-
 orientation = portrait
 fullscreen = 1
 android.presplash_color = #0F0F0F
 android.archs = arm64-v8a, armeabi-v7a
 android.allow_backup = True
 android.permissions = INTERNET
-
-# CONFIGURACIÓN ANDROID: NDK 25b es obligatorio ahora
 android.api = 33
 android.minapi = 21
 android.ndk = 25b
