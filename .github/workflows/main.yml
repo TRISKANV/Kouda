@@ -3,20 +3,45 @@ on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Compilar con Buildozer (Entorno Aislado)
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          # Esto ejecuta buildozer dentro de un contenedor Docker limpio
-          command: buildozer android debug
-          buildozer_version: stable
+          python-version: '3.11'
 
-      - name: Subir el APK
+      - name: Install System Dependencies
+        run: |
+          sudo apt update
+          # Instalamos TODAS las variantes de ncurses y form para que no falle el linkeo
+          sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev \
+          libncurses5-dev libncursesw5-dev libncurses6 libncursesw6 \
+          libtinfo5 cmake libffi-dev libssl-dev python3-pip python3-setuptools \
+          libltdl-dev libgmp-dev libsqlite3-dev openjdk-17-jdk
+
+      - name: Install Buildozer and Cython
+        run: |
+          # Usamos versiones que sabemos que son estables juntas
+          pip3 install --user --upgrade "buildozer==1.5.0" "Cython==0.29.33" virtualenv
+          export PATH=$PATH:~/.local/bin
+
+      - name: Build with Buildozer
+        run: |
+          export PATH=$PATH:~/.local/bin
+          # Limpiamos variables que ensucian el entorno de Android en GitHub
+          unset ANDROID_SDK_ROOT
+          unset ANDROID_NDK_HOME
+          unset ANDROID_HOME
+          
+          # Forzamos a buildozer a que ignore cualquier basura previa
+          buildozer -v android debug
+        env:
+          APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
+          BUILDOZER_ALLOW_ORG_TEST: "1"
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Koda-Tactical-App
