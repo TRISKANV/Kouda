@@ -15,26 +15,25 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt update
-          # ESTO ES CRÍTICO: libtinfo5 es la que permite que el NDK 25b funcione
           sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev \
           libncurses5-dev libncursesw5-dev libncurses6 libncursesw6 \
           libtinfo5 cmake libffi-dev libssl-dev python3-pip python3-setuptools \
           libltdl-dev libgmp-dev libsqlite3-dev openjdk-17-jdk \
           lib32stdc++6 lib32z1
 
-      - name: Install Buildozer and Cython
+      - name: Install Buildozer in Isolated Venv
         run: |
-          # Usamos versiones clavadas para evitar que Buildozer se actualice a algo inestable
-          pip3 install --user --upgrade "buildozer==1.5.0" "Cython==0.29.33" virtualenv
-          export PATH=$PATH:~/.local/bin
+          python -m venv venv
+          source venv/bin/activate
+          # Instalamos versiones exactas que sabemos que no tienen el bug de 'Context'
+          pip install --upgrade pip
+          pip install "buildozer==1.5.0" "Cython==0.29.33" "sh==1.14.3"
 
       - name: Build with Buildozer
         run: |
-          export PATH=$PATH:~/.local/bin
-          # Limpiamos CUALQUIER rastro de intentos anteriores que quedaron en el caché del runner
+          source venv/bin/activate
+          # Borramos la carpeta .buildozer para que no haya archivos de 'Context' viejos
           rm -rf .buildozer
-          
-          # Ejecución con log nivel 2 para ver todo si llegara a fallar
           buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
