@@ -2,6 +2,7 @@ import socket
 import json
 import os
 from threading import Thread
+from kivy.core.window import Window  # Importante para el color de inicio
 from kivymd.app import MDApp
 from kivy.lang import Builder
 from kivy.uix.screenmanager import Screen
@@ -20,7 +21,7 @@ def get_server_info(address):
         ip, port = address.split(":")
         QUERY = b'\xFF\xFF\xFF\xFFTSource Engine Query\x00'
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(2.0)
+        sock.settimeout(1.5) # Un poco más agresivo para cargar rápido
         sock.sendto(QUERY, (ip, int(port)))
         data, _ = sock.recvfrom(4096)
         sock.close()
@@ -140,7 +141,6 @@ MDScreenManager:
             md_bg_color: app.bg_dark
             left_action_items: [["arrow-left", lambda x: app.go_back()]]
         
-        # Carrusel de juegos (Agregado para que no falle el código Python)
         MDBoxLayout:
             size_hint_y: None
             height: "220dp"
@@ -186,11 +186,13 @@ class KoudaApp(MDApp):
     dialog = None
     
     def build(self):
+        # Seteamos el color de fondo de la ventana antes de cargar nada
+        Window.clearcolor = get_color_from_hex("#0F0F0F")
+        
         self.storage_file = os.path.join(self.user_data_dir, "servers.json")
         self.assets_path = os.path.join(self.directory, "assets")
         self.theme_cls.theme_style = "Dark"
         
-        # Colores Tactical
         self.bg_dark = get_color_from_hex("#0F0F0F")
         self.card_color = get_color_from_hex("#1A1A1A")
         self.neon_orange = get_color_from_hex("#FF6B00")
@@ -199,8 +201,8 @@ class KoudaApp(MDApp):
         return Builder.load_string(KV)
 
     def on_start(self):
-        # El delay de 0.5s previene el freeze en el logo
-        Clock.schedule_once(self.run_initial_logic, 0.5)
+        # Bajamos a 0.1 para que el splash desaparezca casi al instante
+        Clock.schedule_once(self.run_initial_logic, 0.1)
 
     def run_initial_logic(self, dt):
         self.setup_game_cards()
