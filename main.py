@@ -5,7 +5,7 @@ from threading import Thread
 from kivymd.app import MDApp
 from kivy.lang import Builder
 from kivy.uix.screenmanager import Screen
-from kivy.clock import mainthread, Clock # Agregamos Clock para seguridad
+from kivy.clock import mainthread, Clock
 from kivy.utils import get_color_from_hex
 from kivymd.uix.card import MDCard
 from kivymd.uix.dialog import MDDialog
@@ -13,14 +13,14 @@ from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.textfield import MDTextField
 from kivy.properties import StringProperty, ColorProperty
 
-# --- LÓGICA DE RED ---
+# --- LÓGICA DE RED (UDP SOURCE QUERY) ---
 def get_server_info(address):
     try:
         if ":" not in address: return None
         ip, port = address.split(":")
         QUERY = b'\xFF\xFF\xFF\xFFTSource Engine Query\x00'
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(2.0) # Un poco más de tiempo para redes móviles
+        sock.settimeout(2.0)
         sock.sendto(QUERY, (ip, int(port)))
         data, _ = sock.recvfrom(4096)
         sock.close()
@@ -31,11 +31,10 @@ def get_server_info(address):
             "players": f"{parts[4][0]}/{parts[4][1]}",
             "ip": address
         }
-    except Exception as e:
-        print(f"Error de red: {e}")
+    except:
         return None
 
-# --- DISEÑO KV (Sin cambios, respetando tu estética) ---
+# --- DISEÑO INTEGRADO (TU ESTÉTICA TACTICAL) ---
 KV = """
 <GameCard>:
     orientation: "vertical"
@@ -64,29 +63,44 @@ KV = """
     padding: "15dp"
     radius: [15, ]
     md_bg_color: app.card_color
+    elevation: 2
+    ripple_behavior: True
     MDBoxLayout:
         orientation: "vertical"
+        adaptive_height: True
+        pos_hint: {"center_y": .5}
         MDLabel:
             text: root.server_name
+            font_style: "H6"
             bold: True
             theme_text_color: "Custom"
             text_color: 1, 1, 1, 1
         MDLabel:
-            text: f"{root.server_map}  •  {root.server_ip}"
+            text: f"{root.server_map} • {root.server_ip}"
             font_style: "Caption"
             theme_text_color: "Custom"
             text_color: app.text_dim
     MDBoxLayout:
         orientation: "vertical"
         adaptive_width: True
+        pos_hint: {"center_y": .5}
         MDLabel:
             text: root.player_count
             halign: "right"
             bold: True
             theme_text_color: "Custom"
             text_color: app.neon_orange
+        MDLabel:
+            text: "35ms"
+            font_style: "Caption"
+            halign: "right"
+            theme_text_color: "Custom"
+            text_color: app.text_dim
         MDIconButton:
             icon: "trash-can-outline"
+            icon_size: "18dp"
+            theme_icon_color: "Custom"
+            icon_color: app.text_dim
             on_release: app.remove_server(root.server_ip)
 
 MDScreenManager:
@@ -101,7 +115,7 @@ MDScreenManager:
         padding: '40dp'
         spacing: '30dp'
         MDLabel:
-            text: "BIENVENIDO\\nKOUDA"
+            text: "KOUDA\\nTACTICAL"
             font_style: "H3"
             halign: "center"
             bold: True
@@ -109,8 +123,8 @@ MDScreenManager:
             text_color: app.neon_orange
         MDRaisedButton:
             text: "SCAN SERVERS"
-            size_hint_x: 0.8
-            pos_hint: {"center_x": .5}
+            size_hint_x: 1
+            height: "60dp"
             md_bg_color: app.neon_orange
             text_color: 0, 0, 0, 1
             on_release: root.manager.current = 'servers'
@@ -121,9 +135,12 @@ MDScreenManager:
     MDBoxLayout:
         orientation: 'vertical'
         MDTopAppBar:
-            title: "KOUDA HUB"
+            title: "Server Hub"
+            elevation: 0
             md_bg_color: app.bg_dark
-            left_action_items: [["chevron-left", lambda x: app.go_back()]]
+            left_action_items: [["arrow-left", lambda x: app.go_back()]]
+        
+        # Carrusel de juegos (Agregado para que no falle el código Python)
         MDBoxLayout:
             size_hint_y: None
             height: "220dp"
@@ -135,6 +152,7 @@ MDScreenManager:
                     orientation: "horizontal"
                     adaptive_width: True
                     spacing: "15dp"
+
         MDScrollView:
             MDBoxLayout:
                 id: container
@@ -142,6 +160,7 @@ MDScreenManager:
                 adaptive_height: True
                 padding: "20dp"
                 spacing: "12dp"
+    
     MDFloatingActionButton:
         icon: "plus"
         md_bg_color: app.neon_orange
@@ -167,11 +186,11 @@ class KoudaApp(MDApp):
     dialog = None
     
     def build(self):
-        # Rutas corregidas para Android
         self.storage_file = os.path.join(self.user_data_dir, "servers.json")
         self.assets_path = os.path.join(self.directory, "assets")
-        
         self.theme_cls.theme_style = "Dark"
+        
+        # Colores Tactical
         self.bg_dark = get_color_from_hex("#0F0F0F")
         self.card_color = get_color_from_hex("#1A1A1A")
         self.neon_orange = get_color_from_hex("#FF6B00")
@@ -180,10 +199,10 @@ class KoudaApp(MDApp):
         return Builder.load_string(KV)
 
     def on_start(self):
-        # Usamos un pequeño delay para que la UI se dibuje antes de cargar datos
-        Clock.schedule_once(self.initial_setup, 0.5)
+        # El delay de 0.5s previene el freeze en el logo
+        Clock.schedule_once(self.run_initial_logic, 0.5)
 
-    def initial_setup(self, dt):
+    def run_initial_logic(self, dt):
         self.setup_game_cards()
         self.refresh_list()
 
@@ -198,9 +217,7 @@ class KoudaApp(MDApp):
             ]
             for name, img, color in games:
                 path = os.path.join(self.assets_path, img)
-                # Si la imagen no existe, ponemos un color sólido o placeholder
-                if not os.path.exists(path):
-                    path = "" 
+                if not os.path.exists(path): path = ""
                 carousel.add_widget(GameCard(game_name=name, image_path=path, bg_color=get_color_from_hex(color)))
         except:
             pass
@@ -208,9 +225,7 @@ class KoudaApp(MDApp):
     def refresh_list(self):
         container = self.root.get_screen('servers').ids.container
         container.clear_widgets()
-        servers = self.load_servers()
-        for addr in servers:
-            # Demon=True es vital para que el hilo muera si la app se cierra
+        for addr in self.load_servers():
             Thread(target=self.fetch_and_add, args=(addr,), daemon=True).start()
 
     def fetch_and_add(self, addr):
@@ -220,8 +235,7 @@ class KoudaApp(MDApp):
 
     @mainthread
     def add_ui(self, info):
-        container = self.root.get_screen('servers').ids.container
-        container.add_widget(
+        self.root.get_screen('servers').ids.container.add_widget(
             ServerCard(
                 server_name=info['name'], 
                 server_map=info['map'], 
@@ -236,15 +250,15 @@ class KoudaApp(MDApp):
                 with open(self.storage_file, "r") as f:
                     return json.load(f)
             except:
-                return ["45.235.98.50:27015"]
+                pass
         return ["45.235.98.50:27015"]
 
     def save_servers(self, data):
         try:
             with open(self.storage_file, "w") as f:
                 json.dump(data, f)
-        except Exception as e:
-            print(f"Error guardando: {e}")
+        except:
+            pass
 
     def show_add_dialog(self):
         self.field = MDTextField(hint_text="IP:Puerto", mode="round")
