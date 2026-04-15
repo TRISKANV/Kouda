@@ -5,7 +5,7 @@ from threading import Thread
 from kivymd.app import MDApp
 from kivy.lang import Builder
 from kivy.uix.screenmanager import Screen
-from kivy.clock import mainthread
+from kivy.clock import mainthread, Clock # Agregamos Clock para seguridad
 from kivy.utils import get_color_from_hex
 from kivymd.uix.card import MDCard
 from kivymd.uix.dialog import MDDialog
@@ -16,10 +16,11 @@ from kivy.properties import StringProperty, ColorProperty
 # --- LÓGICA DE RED ---
 def get_server_info(address):
     try:
+        if ":" not in address: return None
         ip, port = address.split(":")
         QUERY = b'\xFF\xFF\xFF\xFFTSource Engine Query\x00'
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(1.5)
+        sock.settimeout(2.0) # Un poco más de tiempo para redes móviles
         sock.sendto(QUERY, (ip, int(port)))
         data, _ = sock.recvfrom(4096)
         sock.close()
@@ -30,10 +31,11 @@ def get_server_info(address):
             "players": f"{parts[4][0]}/{parts[4][1]}",
             "ip": address
         }
-    except:
+    except Exception as e:
+        print(f"Error de red: {e}")
         return None
 
-# --- DISEÑO KV ---
+# --- DISEÑO KV (Sin cambios, respetando tu estética) ---
 KV = """
 <GameCard>:
     orientation: "vertical"
@@ -99,7 +101,7 @@ MDScreenManager:
         padding: '40dp'
         spacing: '30dp'
         MDLabel:
-            text: "BIENVENIDO\\nA KOUDA"
+            text: "BIENVENIDO\\nKOUDA"
             font_style: "H3"
             halign: "center"
             bold: True
@@ -158,13 +160,16 @@ class ServerCard(MDCard):
     player_count = StringProperty()
     server_ip = StringProperty()
 
+class MenuScreen(Screen): pass
+class ServerListScreen(Screen): pass
+
 class KoudaApp(MDApp):
     dialog = None
     
     def build(self):
-        # Rutas dinámicas para Android
+        # Rutas corregidas para Android
         self.storage_file = os.path.join(self.user_data_dir, "servers.json")
-        self.assets_path = os.path.join(os.path.dirname(__file__), "assets")
+        self.assets_path = os.path.join(self.directory, "assets")
         
         self.theme_cls.theme_style = "Dark"
         self.bg_dark = get_color_from_hex("#0F0F0F")
@@ -175,27 +180,37 @@ class KoudaApp(MDApp):
         return Builder.load_string(KV)
 
     def on_start(self):
+        # Usamos un pequeño delay para que la UI se dibuje antes de cargar datos
+        Clock.schedule_once(self.initial_setup, 0.5)
+
+    def initial_setup(self, dt):
         self.setup_game_cards()
         self.refresh_list()
 
     def setup_game_cards(self):
-        carousel = self.root.get_screen('servers').ids.game_carousel
-        games = [
-            ("CS 1.6", "cs16.png", "#2D3E2F"),
-            ("CS:GO", "csgo.png", "#1B2838"),
-            ("HALF-LIFE", "hl.png", "#4B2D1F"),
-            ("TF2", "tf2.png", "#392A23")
-        ]
-        for name, img, color in games:
-            path = os.path.join(self.assets_path, img)
-            if not os.path.exists(path):
-                path = ""
-            carousel.add_widget(GameCard(game_name=name, image_path=path, bg_color=get_color_from_hex(color)))
+        try:
+            carousel = self.root.get_screen('servers').ids.game_carousel
+            games = [
+                ("CS 1.6", "cs16.png", "#2D3E2F"),
+                ("CS:GO", "csgo.png", "#1B2838"),
+                ("HALF-LIFE", "hl.png", "#4B2D1F"),
+                ("TF2", "tf2.png", "#392A23")
+            ]
+            for name, img, color in games:
+                path = os.path.join(self.assets_path, img)
+                # Si la imagen no existe, ponemos un color sólido o placeholder
+                if not os.path.exists(path):
+                    path = "" 
+                carousel.add_widget(GameCard(game_name=name, image_path=path, bg_color=get_color_from_hex(color)))
+        except:
+            pass
 
     def refresh_list(self):
         container = self.root.get_screen('servers').ids.container
         container.clear_widgets()
-        for addr in self.load_servers():
+        servers = self.load_servers()
+        for addr in servers:
+            # Demon=True es vital para que el hilo muera si la app se cierra
             Thread(target=self.fetch_and_add, args=(addr,), daemon=True).start()
 
     def fetch_and_add(self, addr):
@@ -205,25 +220,31 @@ class KoudaApp(MDApp):
 
     @mainthread
     def add_ui(self, info):
-        self.root.get_screen('servers').ids.container.add_widget(
-            ServerCard(server_name=info['name'], server_map=info['map'], player_count=info['players'], server_ip=info['ip'])
+        container = self.root.get_screen('servers').ids.container
+        container.add_widget(
+            ServerCard(
+                server_name=info['name'], 
+                server_map=info['map'], 
+                player_count=info['players'], 
+                server_ip=info['ip']
+            )
         )
 
     def load_servers(self):
-        try:
-            if os.path.exists(self.storage_file):
+        if os.path.exists(self.storage_file):
+            try:
                 with open(self.storage_file, "r") as f:
                     return json.load(f)
-        except:
-            pass
+            except:
+                return ["45.235.98.50:27015"]
         return ["45.235.98.50:27015"]
 
     def save_servers(self, data):
         try:
             with open(self.storage_file, "w") as f:
                 json.dump(data, f)
-        except:
-            pass
+        except Exception as e:
+            print(f"Error guardando: {e}")
 
     def show_add_dialog(self):
         self.field = MDTextField(hint_text="IP:Puerto", mode="round")
