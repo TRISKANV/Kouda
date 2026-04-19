@@ -19,7 +19,7 @@ from kivymd.uix.list import OneLineIconListItem, IconLeftWidget, MDList
 from kivy.uix.scrollview import ScrollView
 from kivy.properties import StringProperty, ColorProperty, BooleanProperty
 
-# --- LÓGICA DE RED ---
+# --- LÓGICA DE RED MEJORADA ---
 def get_server_data(address, get_players=False):
     try:
         ip, port = address.split(":")
@@ -33,13 +33,29 @@ def get_server_data(address, get_players=False):
         data, _ = sock.recvfrom(4096)
         ping = int((time.perf_counter() - start_time) * 1000)
         
-        parts = data[6:].split(b'\x00')
-        cur_p = parts[4][0]
-        max_p = parts[4][1]
+        # 1. PARSER SEGURO: Evita los jugadores 65/82 leyendo en orden
+        ptr = 6
+        def read_string(d, p):
+            end = d.find(b'\x00', p)
+            if end == -1: return "", p
+            return d[p:end].decode('utf-8', 'ignore'), end + 1
+
+        name, ptr = read_string(data, ptr)
+        map_name, ptr = read_string(data, ptr)
+        folder, ptr = read_string(data, ptr)
+        game, ptr = read_string(data, ptr)
         
+        ptr += 2 # Saltar el AppID (2 bytes)
+        
+        if ptr + 1 < len(data):
+            cur_p = data[ptr]
+            max_p = data[ptr+1]
+        else:
+            cur_p, max_p = 0, 0
+
         info = {
-            "name": parts[0].decode('utf-8', 'ignore')[:25],
-            "map": parts[1].decode('utf-8', 'ignore'),
+            "name": name[:25],
+            "map": map_name,
             "players": f"{cur_p}/{max_p}",
             "cur_players": cur_p,
             "max_players": max_p,
@@ -53,27 +69,41 @@ def get_server_data(address, get_players=False):
         except:
             info["country"] = "??"
 
+        # 2. ESCANEO SEGURO ANTI-CRASHES
         player_list = []
         if get_players:
-            sock.sendto(b'\xFF\xFF\xFF\xFF\x55\xFF\xFF\xFF\xFF', addr)
-            resp, _ = sock.recvfrom(4096)
-            sock.sendto(b'\xFF\xFF\xFF\xFF\x55' + resp[5:], addr)
-            resp, _ = sock.recvfrom(4096)
-            ptr = 6
-            for _ in range(resp[5]):
-                ptr += 1
-                end = resp.find(b'\x00', ptr)
-                p_name = resp[ptr:end].decode('utf-8', 'ignore')
-                score = struct.unpack('<l', resp[end+1:end+5])[0]
-                if p_name: player_list.append((p_name, score))
-                ptr = end + 10
+            try:
+                sock.sendto(b'\xFF\xFF\xFF\xFF\x55\xFF\xFF\xFF\xFF', addr)
+                resp, _ = sock.recvfrom(4096)
+                
+                # Manejo del Challenge Protocol
+                if resp.startswith(b'\xFF\xFF\xFF\xFF\x41'): 
+                    sock.sendto(b'\xFF\xFF\xFF\xFF\x55' + resp[5:9], addr)
+                    resp, _ = sock.recvfrom(4096)
+                
+                if resp.startswith(b'\xFF\xFF\xFF\xFF\x44'):
+                    ptr = 5
+                    num_players = resp[ptr]
+                    ptr += 1
+                    for _ in range(num_players):
+                        if ptr >= len(resp): break
+                        ptr += 1 # Índice del jugador
+                        end = resp.find(b'\x00', ptr)
+                        if end == -1 or end + 8 > len(resp): break # Cortafuegos de memoria
+                        
+                        p_name = resp[ptr:end].decode('utf-8', 'ignore')
+                        score = struct.unpack('<l', resp[end+1:end+5])[0]
+                        if p_name: player_list.append((p_name, score))
+                        ptr = end + 9
+            except Exception:
+                pass # Si el paquete está corrupto, sale limpio sin crashear
         
         sock.close()
         return info, player_list
-    except:
+    except Exception:
         return None, []
 
-# --- UI KOUDA TACTICAL V7 ---
+# --- UI KOUDA TACTICAL V8 ---
 KV = """
 <GameCard>:
     orientation: "vertical"
@@ -82,17 +112,22 @@ KV = """
     radius: [20, ]
     md_bg_color: root.bg_color
     elevation: 2
+    
+    # 3. ALTURAS RÍGIDAS: Evita que las imágenes se vean disparejas
     FitImage:
         source: root.image_path
         radius: [20, 20, 0, 0]
-        size_hint_y: 0.75
+        size_hint_y: None
+        height: "135dp"
+        
     MDLabel:
         text: root.game_name
         halign: "center"
         bold: True
         theme_text_color: "Custom"
         text_color: 1, 1, 1, 1
-        size_hint_y: 0.25
+        size_hint_y: None
+        height: "45dp"
 
 <ServerCard>:
     orientation: "horizontal"
@@ -287,7 +322,6 @@ class KoudaApp(MDApp):
             carousel.add_widget(GameCard(game_name=name, image_path=path if os.path.exists(path) else "", 
                                          bg_color=get_color_from_hex(color)))
 
-    # --- MANEJO DE DIÁLOGOS Y JUGADORES (SIN CRASH) ---
     def show_server_options(self, ip, p_count):
         cur, maxi = map(int, p_count.split('/'))
         btns = [MDFlatButton(text="ESCANEAR JUGADORES", on_release=lambda x: self.open_players(ip))]
@@ -330,7 +364,6 @@ class KoudaApp(MDApp):
         )
         self.dialog.open()
 
-    # --- UTILIDADES ---
     def set_watch(self, ip):
         self.watching_ip = ip
         if self.dialog: self.dialog.dismiss()
