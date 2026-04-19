@@ -5,19 +5,22 @@ import time
 import struct
 import requests
 from threading import Thread
+
 from kivy.core.window import Window
-from kivymd.app import MDApp
 from kivy.lang import Builder
 from kivy.uix.screenmanager import Screen
 from kivy.clock import mainthread, Clock
 from kivy.utils import get_color_from_hex
+from kivy.uix.scrollview import ScrollView
+from kivy.properties import StringProperty, ColorProperty, BooleanProperty
+
+from kivymd.app import MDApp
 from kivymd.uix.card import MDCard
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.list import OneLineIconListItem, IconLeftWidget, MDList
-from kivy.uix.scrollview import ScrollView
-from kivy.properties import StringProperty, ColorProperty, BooleanProperty
+from kivymd.uix.snackbar import Snackbar
 
 # --- LÓGICA DE RED DUAL (GOLDSRC + SOURCE) ---
 def get_server_data(address, get_players=False):
@@ -38,7 +41,6 @@ def get_server_data(address, get_players=False):
             "cur_players": 0, "max_players": 0, "ping": f"{ping}ms", "ip": address, "country": "??"
         }
 
-        # Analizador Dual Seguro
         try:
             header = data[4]
             if header == 0x6D:  # 'm' -> Servidor GoldSrc (CS 1.6, HL)
@@ -46,7 +48,6 @@ def get_server_data(address, get_players=False):
                 if len(parts) >= 3:
                     info["name"] = parts[1].decode('utf-8', 'ignore')[:25]
                     info["map"] = parts[2].decode('utf-8', 'ignore')
-                    # Offset exacto para GoldSrc
                     idx = 5 + len(parts[0]) + 1 + len(parts[1]) + 1 + len(parts[2]) + 1 + len(parts[3]) + 1 + len(parts[4]) + 1
                     if idx + 1 < len(data):
                         info["cur_players"] = data[idx]
@@ -58,14 +59,13 @@ def get_server_data(address, get_players=False):
                 if len(parts) >= 2:
                     info["name"] = parts[0].decode('utf-8', 'ignore')[:25]
                     info["map"] = parts[1].decode('utf-8', 'ignore')
-                    # Offset exacto para Source
                     idx = 6 + len(parts[0]) + 1 + len(parts[1]) + 1 + len(parts[2]) + 1 + len(parts[3]) + 1 + 2
                     if idx + 1 < len(data):
                         info["cur_players"] = data[idx]
                         info["max_players"] = data[idx+1]
                         info["players"] = f"{data[idx]}/{data[idx+1]}"
         except Exception:
-            pass # Si falla el cálculo de bytes, evita crashear y usa datos por defecto
+            pass 
 
         try:
             geo_res = requests.get(f"http://ip-api.com/json/{ip}?fields=countryCode", timeout=1.0).json()
@@ -97,7 +97,7 @@ def get_server_data(address, get_players=False):
                         if p_name: player_list.append((p_name, score))
                         ptr = end + 9
             except Exception:
-                pass # Silencia errores de red al escanear para que la UI no sufra
+                pass 
         
         sock.close()
         return info, player_list
@@ -114,21 +114,18 @@ KV = """
     md_bg_color: root.bg_color
     elevation: 2
     
-    MDBoxLayout:
-        orientation: "vertical"
-        # Imagen forzada para que todas sean idénticas
-        Image:
-            source: root.image_path
-            allow_stretch: True
-            keep_ratio: False
-            size_hint_y: 0.75
-        MDLabel:
-            text: root.game_name
-            halign: "center"
-            bold: True
-            theme_text_color: "Custom"
-            text_color: 1, 1, 1, 1
-            size_hint_y: 0.25
+    FitImage:
+        source: root.image_path
+        size_hint_y: 0.75
+        radius: [15, 15, 0, 0]
+        
+    MDLabel:
+        text: root.game_name
+        halign: "center"
+        bold: True
+        theme_text_color: "Custom"
+        text_color: 1, 1, 1, 1
+        size_hint_y: 0.25
 
 <ServerCard>:
     orientation: "horizontal"
@@ -335,16 +332,17 @@ class KoudaApp(MDApp):
         self.dialog.open()
 
     def prepare_scan(self, ip):
-        # 1. Cerramos el diálogo actual
         if self.dialog: 
             self.dialog.dismiss()
             self.dialog = None
-        # 2. ESPERAMOS 0.4s para que Kivy termine la animación en Android y no colisionen
-        Clock.schedule_once(lambda dt: self.start_scan(ip), 0.4)
-
-    def start_scan(self, ip):
-        self.dialog = MDDialog(title="Conectando...", type="custom", content_cls=MDList())
-        self.dialog.open()
+        
+        Snackbar(
+            text="Interceptando comunicaciones...", 
+            bg_color=self.neon_orange,
+            snackbar_x="10dp",
+            snackbar_y="10dp"
+        ).open()
+        
         Thread(target=self.bg_load_players, args=(ip,), daemon=True).start()
 
     def bg_load_players(self, ip):
@@ -353,10 +351,6 @@ class KoudaApp(MDApp):
 
     @mainthread
     def show_final_players(self, players):
-        if self.dialog: 
-            self.dialog.dismiss()
-            self.dialog = None
-            
         list_v = MDList()
         if not players:
             list_v.add_widget(OneLineIconListItem(text="Servidor vacío o bloqueado"))
@@ -366,10 +360,6 @@ class KoudaApp(MDApp):
                 item.add_widget(IconLeftWidget(icon="account-outline", theme_icon_color="Custom", icon_color=self.neon_orange))
                 list_v.add_widget(item)
         
-        # Abrimos el resultado con un pequeño retraso para seguridad gráfica
-        Clock.schedule_once(lambda dt: self._open_result_dialog(list_v), 0.2)
-
-    def _open_result_dialog(self, list_v):
         self.dialog = MDDialog(
             title="OPERATIVOS ONLINE",
             type="custom",
