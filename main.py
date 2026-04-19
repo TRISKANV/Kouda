@@ -19,13 +19,13 @@ from kivymd.uix.list import OneLineIconListItem, IconLeftWidget, MDList
 from kivy.uix.scrollview import ScrollView
 from kivy.properties import StringProperty, ColorProperty, BooleanProperty
 
-# --- LÓGICA DE RED MEJORADA ---
+# --- LÓGICA DE RED DUAL (GOLDSRC + SOURCE) ---
 def get_server_data(address, get_players=False):
     try:
         ip, port = address.split(":")
         addr = (ip, int(port))
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(1.2)
+        sock.settimeout(1.5)
 
         QUERY_INFO = b'\xFF\xFF\xFF\xFFTSource Engine Query\x00'
         start_time = time.perf_counter()
@@ -33,50 +33,51 @@ def get_server_data(address, get_players=False):
         data, _ = sock.recvfrom(4096)
         ping = int((time.perf_counter() - start_time) * 1000)
         
-        # 1. PARSER SEGURO: Evita los jugadores 65/82 leyendo en orden
-        ptr = 6
-        def read_string(d, p):
-            end = d.find(b'\x00', p)
-            if end == -1: return "", p
-            return d[p:end].decode('utf-8', 'ignore'), end + 1
-
-        name, ptr = read_string(data, ptr)
-        map_name, ptr = read_string(data, ptr)
-        folder, ptr = read_string(data, ptr)
-        game, ptr = read_string(data, ptr)
-        
-        ptr += 2 # Saltar el AppID (2 bytes)
-        
-        if ptr + 1 < len(data):
-            cur_p = data[ptr]
-            max_p = data[ptr+1]
-        else:
-            cur_p, max_p = 0, 0
-
         info = {
-            "name": name[:25],
-            "map": map_name,
-            "players": f"{cur_p}/{max_p}",
-            "cur_players": cur_p,
-            "max_players": max_p,
-            "ping": f"{ping}ms",
-            "ip": address
+            "name": "Servidor Desconocido", "map": "-", "players": "?/?",
+            "cur_players": 0, "max_players": 0, "ping": f"{ping}ms", "ip": address, "country": "??"
         }
 
+        # Analizador Dual Seguro
         try:
-            geo_res = requests.get(f"http://ip-api.com/json/{ip}?fields=countryCode", timeout=0.8).json()
+            header = data[4]
+            if header == 0x6D:  # 'm' -> Servidor GoldSrc (CS 1.6, HL)
+                parts = data[5:].split(b'\x00')
+                if len(parts) >= 3:
+                    info["name"] = parts[1].decode('utf-8', 'ignore')[:25]
+                    info["map"] = parts[2].decode('utf-8', 'ignore')
+                    # Offset exacto para GoldSrc
+                    idx = 5 + len(parts[0]) + 1 + len(parts[1]) + 1 + len(parts[2]) + 1 + len(parts[3]) + 1 + len(parts[4]) + 1
+                    if idx + 1 < len(data):
+                        info["cur_players"] = data[idx]
+                        info["max_players"] = data[idx+1]
+                        info["players"] = f"{data[idx]}/{data[idx+1]}"
+            
+            elif header == 0x49:  # 'I' -> Servidor Source (CS:GO, TF2)
+                parts = data[6:].split(b'\x00')
+                if len(parts) >= 2:
+                    info["name"] = parts[0].decode('utf-8', 'ignore')[:25]
+                    info["map"] = parts[1].decode('utf-8', 'ignore')
+                    # Offset exacto para Source
+                    idx = 6 + len(parts[0]) + 1 + len(parts[1]) + 1 + len(parts[2]) + 1 + len(parts[3]) + 1 + 2
+                    if idx + 1 < len(data):
+                        info["cur_players"] = data[idx]
+                        info["max_players"] = data[idx+1]
+                        info["players"] = f"{data[idx]}/{data[idx+1]}"
+        except Exception:
+            pass # Si falla el cálculo de bytes, evita crashear y usa datos por defecto
+
+        try:
+            geo_res = requests.get(f"http://ip-api.com/json/{ip}?fields=countryCode", timeout=1.0).json()
             info["country"] = geo_res.get("countryCode", "??")
         except:
-            info["country"] = "??"
+            pass
 
-        # 2. ESCANEO SEGURO ANTI-CRASHES
         player_list = []
         if get_players:
             try:
                 sock.sendto(b'\xFF\xFF\xFF\xFF\x55\xFF\xFF\xFF\xFF', addr)
                 resp, _ = sock.recvfrom(4096)
-                
-                # Manejo del Challenge Protocol
                 if resp.startswith(b'\xFF\xFF\xFF\xFF\x41'): 
                     sock.sendto(b'\xFF\xFF\xFF\xFF\x55' + resp[5:9], addr)
                     resp, _ = sock.recvfrom(4096)
@@ -87,47 +88,47 @@ def get_server_data(address, get_players=False):
                     ptr += 1
                     for _ in range(num_players):
                         if ptr >= len(resp): break
-                        ptr += 1 # Índice del jugador
+                        ptr += 1 
                         end = resp.find(b'\x00', ptr)
-                        if end == -1 or end + 8 > len(resp): break # Cortafuegos de memoria
+                        if end == -1 or end + 8 > len(resp): break
                         
                         p_name = resp[ptr:end].decode('utf-8', 'ignore')
                         score = struct.unpack('<l', resp[end+1:end+5])[0]
                         if p_name: player_list.append((p_name, score))
                         ptr = end + 9
             except Exception:
-                pass # Si el paquete está corrupto, sale limpio sin crashear
+                pass # Silencia errores de red al escanear para que la UI no sufra
         
         sock.close()
         return info, player_list
     except Exception:
         return None, []
 
-# --- UI KOUDA TACTICAL V8 ---
+# --- UI KOUDA TACTICAL ---
 KV = """
 <GameCard>:
     orientation: "vertical"
     size_hint: None, None
-    size: "140dp", "180dp"
-    radius: [20, ]
+    size: "130dp", "170dp"
+    radius: [15, ]
     md_bg_color: root.bg_color
     elevation: 2
     
-    # 3. ALTURAS RÍGIDAS: Evita que las imágenes se vean disparejas
-    FitImage:
-        source: root.image_path
-        radius: [20, 20, 0, 0]
-        size_hint_y: None
-        height: "135dp"
-        
-    MDLabel:
-        text: root.game_name
-        halign: "center"
-        bold: True
-        theme_text_color: "Custom"
-        text_color: 1, 1, 1, 1
-        size_hint_y: None
-        height: "45dp"
+    MDBoxLayout:
+        orientation: "vertical"
+        # Imagen forzada para que todas sean idénticas
+        Image:
+            source: root.image_path
+            allow_stretch: True
+            keep_ratio: False
+            size_hint_y: 0.75
+        MDLabel:
+            text: root.game_name
+            halign: "center"
+            bold: True
+            theme_text_color: "Custom"
+            text_color: 1, 1, 1, 1
+            size_hint_y: 0.25
 
 <ServerCard>:
     orientation: "horizontal"
@@ -323,19 +324,26 @@ class KoudaApp(MDApp):
                                          bg_color=get_color_from_hex(color)))
 
     def show_server_options(self, ip, p_count):
-        cur, maxi = map(int, p_count.split('/'))
-        btns = [MDFlatButton(text="ESCANEAR JUGADORES", on_release=lambda x: self.open_players(ip))]
+        cur, maxi = map(int, p_count.split('/') if '/' in p_count else (0,0))
+        btns = [MDFlatButton(text="ESCANEAR JUGADORES", on_release=lambda x: self.prepare_scan(ip))]
         
-        if cur >= maxi:
-            btns.append(MDRaisedButton(text="VIGILAR SLOT", md_bg_color=[1, 0, 0, 1],
+        if cur >= maxi and maxi > 0:
+            btns.append(MDRaisedButton(text="VIGILAR", md_bg_color=[1, 0, 0, 1],
                                           on_release=lambda x: self.set_watch(ip)))
         
-        self.dialog = MDDialog(title="Opciones de Misión", buttons=btns)
+        self.dialog = MDDialog(title="Opciones", buttons=btns)
         self.dialog.open()
 
-    def open_players(self, ip):
-        if self.dialog: self.dialog.dismiss()
-        self.dialog = MDDialog(title="Conectando al servidor...", type="custom", content_cls=MDList())
+    def prepare_scan(self, ip):
+        # 1. Cerramos el diálogo actual
+        if self.dialog: 
+            self.dialog.dismiss()
+            self.dialog = None
+        # 2. ESPERAMOS 0.4s para que Kivy termine la animación en Android y no colisionen
+        Clock.schedule_once(lambda dt: self.start_scan(ip), 0.4)
+
+    def start_scan(self, ip):
+        self.dialog = MDDialog(title="Conectando...", type="custom", content_cls=MDList())
         self.dialog.open()
         Thread(target=self.bg_load_players, args=(ip,), daemon=True).start()
 
@@ -345,17 +353,23 @@ class KoudaApp(MDApp):
 
     @mainthread
     def show_final_players(self, players):
-        if self.dialog: self.dialog.dismiss()
-        
+        if self.dialog: 
+            self.dialog.dismiss()
+            self.dialog = None
+            
         list_v = MDList()
         if not players:
-            list_v.add_widget(OneLineIconListItem(text="Sin operativos en línea"))
+            list_v.add_widget(OneLineIconListItem(text="Servidor vacío o bloqueado"))
         else:
             for name, score in players:
                 item = OneLineIconListItem(text=f"{name}  [b]{score} pts[/b]", theme_text_color="Custom", text_color=[1,1,1,1])
                 item.add_widget(IconLeftWidget(icon="account-outline", theme_icon_color="Custom", icon_color=self.neon_orange))
                 list_v.add_widget(item)
         
+        # Abrimos el resultado con un pequeño retraso para seguridad gráfica
+        Clock.schedule_once(lambda dt: self._open_result_dialog(list_v), 0.2)
+
+    def _open_result_dialog(self, list_v):
         self.dialog = MDDialog(
             title="OPERATIVOS ONLINE",
             type="custom",
@@ -367,7 +381,7 @@ class KoudaApp(MDApp):
     def set_watch(self, ip):
         self.watching_ip = ip
         if self.dialog: self.dialog.dismiss()
-        MDDialog(title="Vigilancia Activa", text=f"Recibirás una alerta cuando {ip} tenga espacio.").open()
+        Clock.schedule_once(lambda dt: MDDialog(title="Vigilancia Activa", text=f"Alerta cuando haya espacio.").open(), 0.4)
 
     def check_watchlist(self, dt):
         if self.watching_ip:
@@ -378,8 +392,7 @@ class KoudaApp(MDApp):
 
     @mainthread
     def trigger_alert(self, name):
-        self.dialog = MDDialog(title="¡SLOT LIBRE!", text=f"El servidor {name} tiene espacio.")
-        self.dialog.open()
+        MDDialog(title="¡SLOT LIBRE!", text=f"El servidor {name} tiene espacio.").open()
 
     def load_data(self, path, default):
         if os.path.exists(path):
