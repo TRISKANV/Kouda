@@ -20,7 +20,7 @@ from kivymd.uix.dialog import MDDialog
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.list import OneLineIconListItem, IconLeftWidget, MDList
-from kivymd.uix.snackbar import Snackbar
+from kivymd.toast import toast
 
 # --- LÓGICA DE RED DUAL (GOLDSRC + SOURCE) ---
 def get_server_data(address, get_players=False):
@@ -336,14 +336,8 @@ class KoudaApp(MDApp):
             self.dialog.dismiss()
             self.dialog = None
         
-        Snackbar(
-            text="Interceptando comunicaciones...", 
-            bg_color=self.neon_orange,
-            snackbar_x="10dp",
-            snackbar_y="10dp"
-        ).open()
-        
-        Thread(target=self.bg_load_players, args=(ip,), daemon=True).start()
+        toast("Interceptando comunicaciones...")
+        Clock.schedule_once(lambda dt: Thread(target=self.bg_load_players, args=(ip,), daemon=True).start(), 0.5)
 
     def bg_load_players(self, ip):
         _, players = get_server_data(ip, True)
