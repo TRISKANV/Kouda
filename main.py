@@ -350,14 +350,27 @@ class KoudaApp(MDApp):
             list_v.add_widget(OneLineIconListItem(text="Servidor vacío o bloqueado"))
         else:
             for name, score in players:
-                item = OneLineIconListItem(text=f"{name}  [b]{score} pts[/b]", theme_text_color="Custom", text_color=[1,1,1,1])
-                item.add_widget(IconLeftWidget(icon="account-outline", theme_icon_color="Custom", icon_color=self.neon_orange))
+                # Sin markup para que nombres raros no crasheen Kivy
+                item = OneLineIconListItem(
+                    text=f"{name}   |   {score} pts", 
+                    theme_text_color="Custom", 
+                    text_color=[1, 1, 1, 1]
+                )
+                item.add_widget(IconLeftWidget(
+                    icon="account-outline", 
+                    theme_icon_color="Custom", 
+                    icon_color=self.neon_orange
+                ))
                 list_v.add_widget(item)
+        
+        # ScrollView instanciado correctamente
+        scroll = ScrollView(size_hint_y=None, height="300dp")
+        scroll.add_widget(list_v)
         
         self.dialog = MDDialog(
             title="OPERATIVOS ONLINE",
             type="custom",
-            content_cls=ScrollView(size_hint_y=None, height="300dp", content=list_v),
+            content_cls=scroll,
             buttons=[MDFlatButton(text="CERRAR", on_release=lambda x: self.dialog.dismiss())]
         )
         self.dialog.open()
@@ -405,10 +418,13 @@ class KoudaApp(MDApp):
         if ":" in val:
             s = self.load_data(self.storage_file, [])
             if val not in s:
-                s.append(val); self.save_data(self.storage_file, s); self.refresh_list()
+                s.append(val)
+                self.save_data(self.storage_file, s)
+                self.refresh_list()
             self.dialog.dismiss()
 
-    def go_back(self): self.root.current = 'menu'
+    def go_back(self): 
+        self.root.current = 'menu'
 
 if __name__ == '__main__':
     KoudaApp().run()
