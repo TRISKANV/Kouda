@@ -30,6 +30,7 @@ def get_server_data(address, get_players=False):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(1.5)
 
+        # --- 1. A2S_INFO (Datos del server) ---
         QUERY_INFO = b'\xFF\xFF\xFF\xFFTSource Engine Query\x00'
         start_time = time.perf_counter()
         sock.sendto(QUERY_INFO, addr)
@@ -43,7 +44,7 @@ def get_server_data(address, get_players=False):
 
         try:
             header = data[4]
-            if header == 0x6D:  # 'm' -> Servidor GoldSrc (CS 1.6, HL)
+            if header == 0x6D:  # GoldSrc
                 parts = data[5:].split(b'\x00')
                 if len(parts) >= 3:
                     info["name"] = parts[1].decode('utf-8', 'ignore')[:25]
@@ -54,7 +55,7 @@ def get_server_data(address, get_players=False):
                         info["max_players"] = data[idx+1]
                         info["players"] = f"{data[idx]}/{data[idx+1]}"
             
-            elif header == 0x49:  # 'I' -> Servidor Source (CS:GO, TF2)
+            elif header == 0x49:  # Source
                 parts = data[6:].split(b'\x00')
                 if len(parts) >= 2:
                     info["name"] = parts[0].decode('utf-8', 'ignore')[:25]
@@ -73,30 +74,50 @@ def get_server_data(address, get_players=False):
         except:
             pass
 
+        # --- 2. A2S_PLAYER (Lista de jugadores) ---
         player_list = []
         if get_players:
             try:
+                # Limpiamos el buffer del socket por si quedó basura de la consulta anterior
+                sock.setblocking(False)
+                try:
+                    while sock.recv(4096): pass
+                except:
+                    pass
+                sock.setblocking(True)
+                sock.settimeout(2.5) # Le damos más margen al server por las dudas
+
+                # Petición de Challenge
                 sock.sendto(b'\xFF\xFF\xFF\xFF\x55\xFF\xFF\xFF\xFF', addr)
                 resp, _ = sock.recvfrom(4096)
+                
+                # Si pide challenge de vuelta (0x41)
                 if resp.startswith(b'\xFF\xFF\xFF\xFF\x41'): 
-                    sock.sendto(b'\xFF\xFF\xFF\xFF\x55' + resp[5:9], addr)
+                    challenge = resp[5:9]
+                    sock.sendto(b'\xFF\xFF\xFF\xFF\x55' + challenge, addr)
                     resp, _ = sock.recvfrom(4096)
                 
+                # Parseo final de jugadores (0x44)
                 if resp.startswith(b'\xFF\xFF\xFF\xFF\x44'):
                     ptr = 5
                     num_players = resp[ptr]
                     ptr += 1
                     for _ in range(num_players):
                         if ptr >= len(resp): break
-                        ptr += 1 
+                        ptr += 1 # Saltamos el index del jugador (1 byte)
                         end = resp.find(b'\x00', ptr)
                         if end == -1 or end + 8 > len(resp): break
                         
-                        p_name = resp[ptr:end].decode('utf-8', 'ignore')
+                        p_name = resp[ptr:end].decode('utf-8', 'ignore').strip()
+                        # Solo agarramos los 4 bytes del score. Los últimos 4 del tiempo jugado los ignoramos.
                         score = struct.unpack('<l', resp[end+1:end+5])[0]
-                        if p_name: player_list.append((p_name, score))
+                        
+                        if p_name: 
+                            player_list.append((p_name, score))
+                        
                         ptr = end + 9
             except Exception:
+                # Si el server nos dropea el paquete intencionalmente, cae acá por timeout.
                 pass 
         
         sock.close()
