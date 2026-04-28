@@ -26,7 +26,7 @@ from kivymd.uix.spinner import MDSpinner
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.label import MDLabel
 
-# --- LÓGICA DE RED DUAL (GOLDSRC + SOURCE) ---
+# --- LÓGICA DE RED ---
 def get_server_data(address, get_players=False):
     try:
         ip, port = address.split(":")
@@ -43,16 +43,18 @@ def get_server_data(address, get_players=False):
         
         info = {
             "name": "Servidor Desconocido", "map": "-", "players": "?/?",
-            "cur_players": 0, "max_players": 0, "ping": f"{ping}ms", "ip": address, "country": "??"
+            "cur_players": 0, "max_players": 0, "ping": f"{ping}ms", 
+            "ip": address, "country": "??", "folder": "unknown"
         }
 
         try:
             header = data[4]
             if header == 0x6D:  # GoldSrc
                 parts = data[5:].split(b'\x00')
-                if len(parts) >= 3:
+                if len(parts) >= 4:
                     info["name"] = parts[1].decode('utf-8', 'ignore')[:25]
                     info["map"] = parts[2].decode('utf-8', 'ignore')
+                    info["folder"] = parts[3].decode('utf-8', 'ignore') # <-- Extraemos la ID del juego
                     idx = 5 + len(parts[0]) + 1 + len(parts[1]) + 1 + len(parts[2]) + 1 + len(parts[3]) + 1 + len(parts[4]) + 1
                     if idx + 1 < len(data):
                         info["cur_players"] = data[idx]
@@ -61,9 +63,10 @@ def get_server_data(address, get_players=False):
             
             elif header == 0x49:  # Source
                 parts = data[6:].split(b'\x00')
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     info["name"] = parts[0].decode('utf-8', 'ignore')[:25]
                     info["map"] = parts[1].decode('utf-8', 'ignore')
+                    info["folder"] = parts[2].decode('utf-8', 'ignore') # <-- Extraemos la ID del juego
                     idx = 6 + len(parts[0]) + 1 + len(parts[1]) + 1 + len(parts[2]) + 1 + len(parts[3]) + 1 + 2
                     if idx + 1 < len(data):
                         info["cur_players"] = data[idx]
@@ -128,10 +131,16 @@ KV = """
 <GameCard>:
     orientation: "vertical"
     size_hint: None, None
-    size: "130dp", "170dp"
+    size: "115dp", "150dp"   # <-- Tamaño fijo para que todas estén a la misma altura
     radius: [15, ]
     md_bg_color: root.bg_color
     elevation: 2
+    ripple_behavior: True
+    on_release: app.set_filter(root.game_tag)
+    
+    # Efecto de borde naranja cuando el filtro de este juego está activado
+    line_color: app.neon_orange if app.current_filter == root.game_tag else [0,0,0,0]
+    line_width: 1.5 if app.current_filter == root.game_tag else 0
     
     FitImage:
         source: root.image_path
@@ -275,7 +284,7 @@ MDScreenManager:
         
         MDBoxLayout:
             size_hint_y: None
-            height: "200dp"
+            height: "190dp"
             padding: ["20dp", "10dp"]
             MDScrollView:
                 bar_width: 0
@@ -304,6 +313,7 @@ class GameCard(MDCard):
     game_name = StringProperty()
     image_path = StringProperty()
     bg_color = ColorProperty()
+    game_tag = StringProperty() # Identificador para filtrar (ej: "cstrike")
 
 class ServerCard(MDCard):
     server_name = StringProperty()
@@ -314,10 +324,6 @@ class ServerCard(MDCard):
     country = StringProperty("??")
     is_fav = BooleanProperty(False)
 
-class PlayerItem(MDBoxLayout):
-    p_name = StringProperty()
-    p_kills = StringProperty()
-
 class MenuScreen(Screen): pass
 class ServerListScreen(Screen): pass
 
@@ -325,6 +331,8 @@ class KoudaApp(MDApp):
     watching_ip = None
     dialog = None
     loading_dialog = None
+    current_filter = StringProperty("All") # Por defecto mostramos todo
+    server_cache = [] # Acá guardamos los servidores cargados para filtrar rápido
 
     def build(self):
         Window.clearcolor = get_color_from_hex("#0F0F0F")
@@ -344,9 +352,38 @@ class KoudaApp(MDApp):
         Clock.schedule_once(lambda dt: self.refresh_list(), 0.5)
         Clock.schedule_interval(self.check_watchlist, 20)
 
+    def setup_game_cards(self):
+        carousel = self.root.get_screen('servers').ids.game_carousel
+        if len(carousel.children) > 0: return 
+        
+        # Agregamos el identificador del juego ("folder") como 4to parámetro
+        games = [
+            ("CS 1.6", "cs16.png", "#2D3E2F", "cstrike"), 
+            ("CS:GO", "csgo.png", "#1B2838", "csgo"), 
+            ("HL", "hl.png", "#4B2D1F", "valve"), 
+            ("TF2", "tf2.png", "#392A23", "tf")
+        ]
+        
+        for name, img, color, tag in games:
+            path = os.path.join(self.assets_path, img)
+            carousel.add_widget(GameCard(
+                game_name=name, 
+                image_path=path if os.path.exists(path) else "", 
+                bg_color=get_color_from_hex(color),
+                game_tag=tag
+            ))
+
+    def set_filter(self, game_tag):
+        # Si tocamos el mismo filtro activo, lo apagamos y mostramos todos
+        if self.current_filter == game_tag:
+            self.current_filter = "All"
+        else:
+            self.current_filter = game_tag
+        self.update_ui() # Filtramos al instante usando la caché
+
     def refresh_list(self):
-        container = self.root.get_screen('servers').ids.container
-        container.clear_widgets()
+        self.server_cache.clear()
+        self.root.get_screen('servers').ids.container.clear_widgets()
         
         servers = self.load_data(self.storage_file, ["45.235.98.50:27015"])
         favs = self.load_data(self.favs_file, [])
@@ -357,25 +394,31 @@ class KoudaApp(MDApp):
 
     def fetch_and_add(self, addr, is_fav):
         info, _ = get_server_data(addr)
-        if info: self.add_ui(info, is_fav)
+        if info:
+            info['is_fav'] = is_fav
+            self.add_to_cache_and_update(info)
 
     @mainthread
-    def add_ui(self, info, is_fav):
-        self.root.get_screen('servers').ids.container.add_widget(
-            ServerCard(server_name=info['name'], server_map=info['map'], 
-                       player_count=info['players'], server_ip=info['ip'], 
-                       ping_val=info['ping'], country=info['country'], is_fav=is_fav)
-        )
+    def add_to_cache_and_update(self, info):
+        self.server_cache.append(info)
+        self.update_ui()
 
-    def setup_game_cards(self):
-        carousel = self.root.get_screen('servers').ids.game_carousel
-        if len(carousel.children) > 0: return 
-        games = [("CS 1.6", "cs16.png", "#2D3E2F"), ("CS:GO", "csgo.png", "#1B2838"), 
-                 ("HL", "hl.png", "#4B2D1F"), ("TF2", "tf2.png", "#392A23")]
-        for name, img, color in games:
-            path = os.path.join(self.assets_path, img)
-            carousel.add_widget(GameCard(game_name=name, image_path=path if os.path.exists(path) else "", 
-                                         bg_color=get_color_from_hex(color)))
+    def update_ui(self):
+        container = self.root.get_screen('servers').ids.container
+        container.clear_widgets()
+        
+        for info in self.server_cache:
+            # Si hay un filtro activo y el servidor no es de ese juego, lo ignoramos
+            if self.current_filter != "All" and info.get("folder") != self.current_filter:
+                continue
+                
+            container.add_widget(
+                ServerCard(
+                    server_name=info['name'], server_map=info['map'], 
+                    player_count=info['players'], server_ip=info['ip'], 
+                    ping_val=info['ping'], country=info['country'], is_fav=info['is_fav']
+                )
+            )
 
     def show_server_options(self, ip, p_count):
         cur, maxi = map(int, p_count.split('/') if '/' in p_count else (0,0))
@@ -398,7 +441,6 @@ class KoudaApp(MDApp):
             self.dialog.dismiss()
             self.dialog = None
         
-        # UI de carga profesional con Spinner
         box = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing="20dp", padding="20dp")
         spinner = MDSpinner(size_hint=(None, None), size=("40dp", "40dp"), pos_hint={'center_x': .5}, color=self.neon_orange)
         lbl = MDLabel(text="Interceptando comunicaciones...", halign="center", theme_text_color="Custom", text_color=self.text_dim)
@@ -425,7 +467,6 @@ class KoudaApp(MDApp):
         if not players:
             container.add_widget(MDLabel(text="El radar no detectó jugadores o el firewall bloqueó la consulta.", halign="center", theme_text_color="Custom", text_color=self.text_dim))
         else:
-            # Ordenar jugadores por kills (índice 1 de la tupla) de mayor a menor
             players.sort(key=lambda x: x[1], reverse=True)
             for name, score in players:
                 container.add_widget(PlayerItem(p_name=name, p_kills=str(score)))
@@ -493,10 +534,7 @@ class KoudaApp(MDApp):
         self.dialog.open()
 
     def add_server_from_dialog(self, *args):
-        # Limpiamos espacios basura que pueda haber puesto el usuario sin querer
         raw_val = self.field.text.strip().replace(" ", "")
-        
-        # VALIDACIÓN REGEX: Asegura que el formato sea estricto IP:PUERTO
         ip_pattern = r"^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$"
         
         if re.match(ip_pattern, raw_val):
