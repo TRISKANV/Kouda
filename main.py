@@ -4,6 +4,7 @@ import os
 import time
 import struct
 import requests
+import re
 from threading import Thread
 
 from kivy.core.window import Window
@@ -21,6 +22,9 @@ from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.list import OneLineIconListItem, IconLeftWidget, MDList
 from kivymd.toast import toast
+from kivymd.uix.spinner import MDSpinner
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.label import MDLabel
 
 # --- LÓGICA DE RED DUAL (GOLDSRC + SOURCE) ---
 def get_server_data(address, get_players=False):
@@ -30,7 +34,7 @@ def get_server_data(address, get_players=False):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(1.5)
 
-        # --- 1. A2S_INFO (Datos del server) ---
+        # --- 1. A2S_INFO ---
         QUERY_INFO = b'\xFF\xFF\xFF\xFFTSource Engine Query\x00'
         start_time = time.perf_counter()
         sock.sendto(QUERY_INFO, addr)
@@ -74,42 +78,37 @@ def get_server_data(address, get_players=False):
         except:
             pass
 
-        # --- 2. A2S_PLAYER (Lista de jugadores) ---
+        # --- 2. A2S_PLAYER ---
         player_list = []
         if get_players:
             try:
-                # Limpiamos el buffer del socket por si quedó basura de la consulta anterior
                 sock.setblocking(False)
                 try:
                     while sock.recv(4096): pass
                 except:
                     pass
                 sock.setblocking(True)
-                sock.settimeout(2.5) # Le damos más margen al server por las dudas
+                sock.settimeout(2.5)
 
-                # Petición de Challenge
                 sock.sendto(b'\xFF\xFF\xFF\xFF\x55\xFF\xFF\xFF\xFF', addr)
                 resp, _ = sock.recvfrom(4096)
                 
-                # Si pide challenge de vuelta (0x41)
                 if resp.startswith(b'\xFF\xFF\xFF\xFF\x41'): 
                     challenge = resp[5:9]
                     sock.sendto(b'\xFF\xFF\xFF\xFF\x55' + challenge, addr)
                     resp, _ = sock.recvfrom(4096)
                 
-                # Parseo final de jugadores (0x44)
                 if resp.startswith(b'\xFF\xFF\xFF\xFF\x44'):
                     ptr = 5
                     num_players = resp[ptr]
                     ptr += 1
                     for _ in range(num_players):
                         if ptr >= len(resp): break
-                        ptr += 1 # Saltamos el index del jugador (1 byte)
+                        ptr += 1 
                         end = resp.find(b'\x00', ptr)
                         if end == -1 or end + 8 > len(resp): break
                         
                         p_name = resp[ptr:end].decode('utf-8', 'ignore').strip()
-                        # Solo agarramos los 4 bytes del score. Los últimos 4 del tiempo jugado los ignoramos.
                         score = struct.unpack('<l', resp[end+1:end+5])[0]
                         
                         if p_name: 
@@ -117,7 +116,6 @@ def get_server_data(address, get_players=False):
                         
                         ptr = end + 9
             except Exception:
-                # Si el server nos dropea el paquete intencionalmente, cae acá por timeout.
                 pass 
         
         sock.close()
@@ -204,6 +202,39 @@ KV = """
             icon_color: (1, 0.8, 0, 1) if root.is_fav else app.text_dim
             on_release: app.toggle_favorite(root.server_ip)
 
+<PlayerItem@MDBoxLayout>:
+    orientation: "horizontal"
+    size_hint_y: None
+    height: "45dp"
+    padding: ["15dp", "0dp", "15dp", "0dp"]
+    md_bg_color: get_color_from_hex("#1A1A1A")
+    radius: [8, ]
+    
+    MDIcon:
+        icon: "account"
+        theme_text_color: "Custom"
+        text_color: app.text_dim
+        pos_hint: {"center_y": .5}
+        size_hint_x: None
+        width: "30dp"
+        
+    MDLabel:
+        text: root.p_name
+        theme_text_color: "Custom"
+        text_color: 1, 1, 1, 1
+        bold: True
+        shorten: True
+        shorten_from: "right"
+        
+    MDLabel:
+        text: f"{root.p_kills} Kills"
+        theme_text_color: "Custom"
+        text_color: app.neon_orange
+        halign: "right"
+        bold: True
+        size_hint_x: None
+        width: "60dp"
+
 MDScreenManager:
     MenuScreen:
     ServerListScreen:
@@ -283,12 +314,17 @@ class ServerCard(MDCard):
     country = StringProperty("??")
     is_fav = BooleanProperty(False)
 
+class PlayerItem(MDBoxLayout):
+    p_name = StringProperty()
+    p_kills = StringProperty()
+
 class MenuScreen(Screen): pass
 class ServerListScreen(Screen): pass
 
 class KoudaApp(MDApp):
     watching_ip = None
     dialog = None
+    loading_dialog = None
 
     def build(self):
         Window.clearcolor = get_color_from_hex("#0F0F0F")
@@ -343,13 +379,18 @@ class KoudaApp(MDApp):
 
     def show_server_options(self, ip, p_count):
         cur, maxi = map(int, p_count.split('/') if '/' in p_count else (0,0))
-        btns = [MDFlatButton(text="ESCANEAR JUGADORES", on_release=lambda x: self.prepare_scan(ip))]
+        
+        btns = [MDFlatButton(text="ESCANEAR JUGADORES", theme_text_color="Custom", text_color=self.neon_orange, on_release=lambda x: self.prepare_scan(ip))]
         
         if cur >= maxi and maxi > 0:
-            btns.append(MDRaisedButton(text="VIGILAR", md_bg_color=[1, 0, 0, 1],
-                                          on_release=lambda x: self.set_watch(ip)))
+            btns.append(MDRaisedButton(text="VIGILAR SLOT", md_bg_color=[1, 0, 0, 1], on_release=lambda x: self.set_watch(ip)))
         
-        self.dialog = MDDialog(title="Opciones", buttons=btns)
+        self.dialog = MDDialog(
+            title="OPCIONES DE SERVIDOR",
+            text="Selecciona una acción táctica:",
+            buttons=btns,
+            radius=[15, 15, 15, 15]
+        )
         self.dialog.open()
 
     def prepare_scan(self, ip):
@@ -357,7 +398,16 @@ class KoudaApp(MDApp):
             self.dialog.dismiss()
             self.dialog = None
         
-        toast("Interceptando comunicaciones...")
+        # UI de carga profesional con Spinner
+        box = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing="20dp", padding="20dp")
+        spinner = MDSpinner(size_hint=(None, None), size=("40dp", "40dp"), pos_hint={'center_x': .5}, color=self.neon_orange)
+        lbl = MDLabel(text="Interceptando comunicaciones...", halign="center", theme_text_color="Custom", text_color=self.text_dim)
+        box.add_widget(spinner)
+        box.add_widget(lbl)
+        
+        self.loading_dialog = MDDialog(type="custom", content_cls=box, radius=[15, 15, 15, 15])
+        self.loading_dialog.open()
+        
         Clock.schedule_once(lambda dt: Thread(target=self.bg_load_players, args=(ip,), daemon=True).start(), 0.5)
 
     def bg_load_players(self, ip):
@@ -366,40 +416,36 @@ class KoudaApp(MDApp):
 
     @mainthread
     def show_final_players(self, players):
-        list_v = MDList()
-        if not players:
-            list_v.add_widget(OneLineIconListItem(text="Servidor vacío o bloqueado"))
-        else:
-            for name, score in players:
-                # Sin markup para que nombres raros no crasheen Kivy
-                item = OneLineIconListItem(
-                    text=f"{name}   |   {score} pts", 
-                    theme_text_color="Custom", 
-                    text_color=[1, 1, 1, 1]
-                )
-                item.add_widget(IconLeftWidget(
-                    icon="account-outline", 
-                    theme_icon_color="Custom", 
-                    icon_color=self.neon_orange
-                ))
-                list_v.add_widget(item)
+        if self.loading_dialog:
+            self.loading_dialog.dismiss()
+            self.loading_dialog = None
+
+        container = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing="8dp")
         
-        # ScrollView instanciado correctamente
-        scroll = ScrollView(size_hint_y=None, height="300dp")
-        scroll.add_widget(list_v)
+        if not players:
+            container.add_widget(MDLabel(text="El radar no detectó jugadores o el firewall bloqueó la consulta.", halign="center", theme_text_color="Custom", text_color=self.text_dim))
+        else:
+            # Ordenar jugadores por kills (índice 1 de la tupla) de mayor a menor
+            players.sort(key=lambda x: x[1], reverse=True)
+            for name, score in players:
+                container.add_widget(PlayerItem(p_name=name, p_kills=str(score)))
+        
+        scroll = ScrollView(size_hint_y=None, height="350dp")
+        scroll.add_widget(container)
         
         self.dialog = MDDialog(
-            title="OPERATIVOS ONLINE",
+            title="OPERATIVOS DETECTADOS",
             type="custom",
             content_cls=scroll,
-            buttons=[MDFlatButton(text="CERRAR", on_release=lambda x: self.dialog.dismiss())]
+            buttons=[MDRaisedButton(text="CERRAR", md_bg_color=self.neon_orange, on_release=lambda x: self.dialog.dismiss())],
+            radius=[15, 15, 15, 15]
         )
         self.dialog.open()
 
     def set_watch(self, ip):
         self.watching_ip = ip
         if self.dialog: self.dialog.dismiss()
-        Clock.schedule_once(lambda dt: MDDialog(title="Vigilancia Activa", text=f"Alerta cuando haya espacio.").open(), 0.4)
+        toast("Vigilancia activada. Te avisaremos cuando haya hueco.")
 
     def check_watchlist(self, dt):
         if self.watching_ip:
@@ -410,7 +456,7 @@ class KoudaApp(MDApp):
 
     @mainthread
     def trigger_alert(self, name):
-        MDDialog(title="¡SLOT LIBRE!", text=f"El servidor {name} tiene espacio.").open()
+        MDDialog(title="¡SLOT LIBRE!", text=f"El servidor {name} tiene espacio.", radius=[15, 15, 15, 15]).open()
 
     def load_data(self, path, default):
         if os.path.exists(path):
@@ -428,21 +474,42 @@ class KoudaApp(MDApp):
         self.refresh_list()
 
     def show_add_dialog(self):
-        self.field = MDTextField(hint_text="IP:Puerto", mode="round")
-        self.dialog = MDDialog(title="Añadir Servidor", type="custom", content_cls=self.field,
-            buttons=[MDFlatButton(text="CANCELAR", on_release=lambda x: self.dialog.dismiss()),
-                     MDRaisedButton(text="AÑADIR", md_bg_color=self.neon_orange, on_release=self.add_server_from_dialog)])
+        self.field = MDTextField(
+            hint_text="Ejemplo: 45.235.98.50:27015", 
+            mode="rectangle",
+            text_color_focus=self.neon_orange,
+            line_color_focus=self.neon_orange
+        )
+        self.dialog = MDDialog(
+            title="AÑADIR SERVIDOR",
+            type="custom", 
+            content_cls=self.field,
+            buttons=[
+                MDFlatButton(text="CANCELAR", theme_text_color="Custom", text_color=self.text_dim, on_release=lambda x: self.dialog.dismiss()),
+                MDRaisedButton(text="VINCULAR", md_bg_color=self.neon_orange, on_release=self.add_server_from_dialog)
+            ],
+            radius=[15, 15, 15, 15]
+        )
         self.dialog.open()
 
     def add_server_from_dialog(self, *args):
-        val = self.field.text.strip()
-        if ":" in val:
+        # Limpiamos espacios basura que pueda haber puesto el usuario sin querer
+        raw_val = self.field.text.strip().replace(" ", "")
+        
+        # VALIDACIÓN REGEX: Asegura que el formato sea estricto IP:PUERTO
+        ip_pattern = r"^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$"
+        
+        if re.match(ip_pattern, raw_val):
             s = self.load_data(self.storage_file, [])
-            if val not in s:
-                s.append(val)
+            if raw_val not in s:
+                s.append(raw_val)
                 self.save_data(self.storage_file, s)
                 self.refresh_list()
             self.dialog.dismiss()
+        else:
+            self.field.error = True
+            self.field.helper_text = "Formato inválido. Usa IP:Puerto"
+            self.field.helper_text_mode = "on_error"
 
     def go_back(self): 
         self.root.current = 'menu'
