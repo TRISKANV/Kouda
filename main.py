@@ -77,6 +77,7 @@ def get_server_data(address, get_players=False):
             pass 
 
         try:
+            # Petición HTTP a ip-api (esta es la que podía causar bloqueos si no estaba en hilo)
             geo_res = requests.get(f"http://ip-api.com/json/{ip}?fields=countryCode", timeout=1.0).json()
             info["country"] = geo_res.get("countryCode", "??")
         except:
@@ -346,8 +347,7 @@ class KoudaApp(MDApp):
         self.neon_orange = get_color_from_hex("#FF6B00")
         self.text_dim = get_color_from_hex("#707070")
 
-        # --- ESCUDO ANTI-CRASHEOS DE IMÁGENES ---
-        # Si falta alguna imagen, generamos un píxel transparente seguro en tiempo real
+        # Escudo de imágenes fantasma
         self.blank_img = os.path.join(self.user_data_dir, "blank.png")
         if not os.path.exists(self.blank_img):
             blank_data = b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
@@ -357,8 +357,13 @@ class KoudaApp(MDApp):
         return Builder.load_string(KV)
 
     def on_start(self):
-        Clock.schedule_once(lambda dt: self.refresh_list(), 0.5)
+        # Desacoplamos por completo el inicio de peticiones del arranque de la UI
+        Thread(target=self._arranque_diferido, daemon=True).start()
         Clock.schedule_interval(self.check_watchlist, 20)
+
+    def _arranque_diferido(self):
+        time.sleep(1) # Le damos 1 segundo a la app para que respire y cargue sus gráficos
+        Clock.schedule_once(lambda dt: self.refresh_list(), 0)
 
     def setup_game_cards(self):
         carousel = self.root.get_screen('servers').ids.game_carousel
@@ -373,7 +378,6 @@ class KoudaApp(MDApp):
         
         for name, img, color, tag in games:
             path = os.path.join(self.assets_path, img)
-            # Si el archivo de imagen existe lo usa, si no, usa nuestro píxel a prueba de fallos
             safe_path = path if os.path.exists(path) else self.blank_img
             
             carousel.add_widget(GameCard(
@@ -394,10 +398,14 @@ class KoudaApp(MDApp):
         self.server_cache.clear()
         self.root.get_screen('servers').ids.container.clear_widgets()
         
+        # Procesamos la lectura de archivos y creación de peticiones en un hilo
+        Thread(target=self._procesar_servidores_bg, daemon=True).start()
+
+    def _procesar_servidores_bg(self):
         servers = self.load_data(self.storage_file, ["45.235.98.50:27015"])
         favs = self.load_data(self.favs_file, [])
-        
         combined = (favs + [s for s in servers if s not in favs])
+        
         for addr in combined:
             Thread(target=self.fetch_and_add, args=(addr, addr in favs), daemon=True).start()
 
@@ -410,9 +418,6 @@ class KoudaApp(MDApp):
     @mainthread
     def add_to_cache(self, info):
         self.server_cache.append(info)
-        # --- ESCUDO ANTI-COLAPSO DE UI (DEBOUNCE) ---
-        # Cancela actualizaciones encoladas y espera 0.1s. 
-        # Así no redibuja la pantalla 10 veces en 1 milisegundo.
         Clock.unschedule(self.update_ui)
         Clock.schedule_once(self.update_ui, 0.1)
 
@@ -420,7 +425,6 @@ class KoudaApp(MDApp):
         container = self.root.get_screen('servers').ids.container
         container.clear_widgets()
         
-        # Iteramos sobre una COPIA de la lista [list()] para evitar choques con hilos
         for info in list(self.server_cache):
             if self.current_filter != "All" and info.get("folder") != self.current_filter:
                 continue
@@ -503,10 +507,14 @@ class KoudaApp(MDApp):
 
     def check_watchlist(self, dt):
         if self.watching_ip:
-            info, _ = get_server_data(self.watching_ip)
-            if info and info['cur_players'] < info['max_players']:
-                self.trigger_alert(info['name'])
-                self.watching_ip = None
+            # Enviamos la vigilancia a un hilo para evitar que la app tire un tirón cada 20 segs
+            Thread(target=self._check_watchlist_bg, args=(self.watching_ip,), daemon=True).start()
+
+    def _check_watchlist_bg(self, ip):
+        info, _ = get_server_data(ip)
+        if info and info['cur_players'] < info['max_players']:
+            self.trigger_alert(info['name'])
+            self.watching_ip = None
 
     @mainthread
     def trigger_alert(self, name):
@@ -548,11 +556,4 @@ class KoudaApp(MDApp):
 
     def add_server_from_dialog(self, *args):
         raw_val = self.field.text.strip().replace(" ", "")
-        ip_pattern = r"^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$"
         
-        if re.match(ip_pattern, raw_val):
-            s = self.load_data(self.storage_file, [])
-            if raw_val not in s:
-                s.append(raw_val)
-                self.save_data(self.storage_file, s)
-                self.refresh_list
