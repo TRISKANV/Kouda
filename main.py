@@ -5,6 +5,7 @@ import time
 import struct
 import requests
 import re
+import base64
 from threading import Thread
 
 from kivy.core.window import Window
@@ -54,7 +55,7 @@ def get_server_data(address, get_players=False):
                 if len(parts) >= 4:
                     info["name"] = parts[1].decode('utf-8', 'ignore')[:25]
                     info["map"] = parts[2].decode('utf-8', 'ignore')
-                    info["folder"] = parts[3].decode('utf-8', 'ignore') # <-- Extraemos la ID del juego
+                    info["folder"] = parts[3].decode('utf-8', 'ignore')
                     idx = 5 + len(parts[0]) + 1 + len(parts[1]) + 1 + len(parts[2]) + 1 + len(parts[3]) + 1 + len(parts[4]) + 1
                     if idx + 1 < len(data):
                         info["cur_players"] = data[idx]
@@ -66,7 +67,7 @@ def get_server_data(address, get_players=False):
                 if len(parts) >= 3:
                     info["name"] = parts[0].decode('utf-8', 'ignore')[:25]
                     info["map"] = parts[1].decode('utf-8', 'ignore')
-                    info["folder"] = parts[2].decode('utf-8', 'ignore') # <-- Extraemos la ID del juego
+                    info["folder"] = parts[2].decode('utf-8', 'ignore')
                     idx = 6 + len(parts[0]) + 1 + len(parts[1]) + 1 + len(parts[2]) + 1 + len(parts[3]) + 1 + 2
                     if idx + 1 < len(data):
                         info["cur_players"] = data[idx]
@@ -131,14 +132,13 @@ KV = """
 <GameCard>:
     orientation: "vertical"
     size_hint: None, None
-    size: "115dp", "150dp"   # <-- Tamaño fijo para que todas estén a la misma altura
+    size: "115dp", "150dp"
     radius: [15, ]
     md_bg_color: root.bg_color
     elevation: 2
     ripple_behavior: True
     on_release: app.set_filter(root.game_tag)
     
-    # Efecto de borde naranja cuando el filtro de este juego está activado
     line_color: app.neon_orange if app.current_filter == root.game_tag else [0,0,0,0]
     line_width: 1.5 if app.current_filter == root.game_tag else 0
     
@@ -313,7 +313,7 @@ class GameCard(MDCard):
     game_name = StringProperty()
     image_path = StringProperty()
     bg_color = ColorProperty()
-    game_tag = StringProperty() # Identificador para filtrar (ej: "cstrike")
+    game_tag = StringProperty() 
 
 class ServerCard(MDCard):
     server_name = StringProperty()
@@ -331,8 +331,8 @@ class KoudaApp(MDApp):
     watching_ip = None
     dialog = None
     loading_dialog = None
-    current_filter = StringProperty("All") # Por defecto mostramos todo
-    server_cache = [] # Acá guardamos los servidores cargados para filtrar rápido
+    current_filter = StringProperty("All") 
+    server_cache = [] 
 
     def build(self):
         Window.clearcolor = get_color_from_hex("#0F0F0F")
@@ -345,6 +345,14 @@ class KoudaApp(MDApp):
         self.card_color = get_color_from_hex("#1A1A1A")
         self.neon_orange = get_color_from_hex("#FF6B00")
         self.text_dim = get_color_from_hex("#707070")
+
+        # --- ESCUDO ANTI-CRASHEOS DE IMÁGENES ---
+        # Si falta alguna imagen, generamos un píxel transparente seguro en tiempo real
+        self.blank_img = os.path.join(self.user_data_dir, "blank.png")
+        if not os.path.exists(self.blank_img):
+            blank_data = b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+            with open(self.blank_img, "wb") as f:
+                f.write(base64.b64decode(blank_data))
         
         return Builder.load_string(KV)
 
@@ -356,7 +364,6 @@ class KoudaApp(MDApp):
         carousel = self.root.get_screen('servers').ids.game_carousel
         if len(carousel.children) > 0: return 
         
-        # Agregamos el identificador del juego ("folder") como 4to parámetro
         games = [
             ("CS 1.6", "cs16.png", "#2D3E2F", "cstrike"), 
             ("CS:GO", "csgo.png", "#1B2838", "csgo"), 
@@ -366,20 +373,22 @@ class KoudaApp(MDApp):
         
         for name, img, color, tag in games:
             path = os.path.join(self.assets_path, img)
+            # Si el archivo de imagen existe lo usa, si no, usa nuestro píxel a prueba de fallos
+            safe_path = path if os.path.exists(path) else self.blank_img
+            
             carousel.add_widget(GameCard(
                 game_name=name, 
-                image_path=path if os.path.exists(path) else "", 
+                image_path=safe_path, 
                 bg_color=get_color_from_hex(color),
                 game_tag=tag
             ))
 
     def set_filter(self, game_tag):
-        # Si tocamos el mismo filtro activo, lo apagamos y mostramos todos
         if self.current_filter == game_tag:
             self.current_filter = "All"
         else:
             self.current_filter = game_tag
-        self.update_ui() # Filtramos al instante usando la caché
+        self.update_ui() 
 
     def refresh_list(self):
         self.server_cache.clear()
@@ -396,19 +405,23 @@ class KoudaApp(MDApp):
         info, _ = get_server_data(addr)
         if info:
             info['is_fav'] = is_fav
-            self.add_to_cache_and_update(info)
+            self.add_to_cache(info)
 
     @mainthread
-    def add_to_cache_and_update(self, info):
+    def add_to_cache(self, info):
         self.server_cache.append(info)
-        self.update_ui()
+        # --- ESCUDO ANTI-COLAPSO DE UI (DEBOUNCE) ---
+        # Cancela actualizaciones encoladas y espera 0.1s. 
+        # Así no redibuja la pantalla 10 veces en 1 milisegundo.
+        Clock.unschedule(self.update_ui)
+        Clock.schedule_once(self.update_ui, 0.1)
 
-    def update_ui(self):
+    def update_ui(self, dt=None):
         container = self.root.get_screen('servers').ids.container
         container.clear_widgets()
         
-        for info in self.server_cache:
-            # Si hay un filtro activo y el servidor no es de ese juego, lo ignoramos
+        # Iteramos sobre una COPIA de la lista [list()] para evitar choques con hilos
+        for info in list(self.server_cache):
             if self.current_filter != "All" and info.get("folder") != self.current_filter:
                 continue
                 
@@ -542,15 +555,4 @@ class KoudaApp(MDApp):
             if raw_val not in s:
                 s.append(raw_val)
                 self.save_data(self.storage_file, s)
-                self.refresh_list()
-            self.dialog.dismiss()
-        else:
-            self.field.error = True
-            self.field.helper_text = "Formato inválido. Usa IP:Puerto"
-            self.field.helper_text_mode = "on_error"
-
-    def go_back(self): 
-        self.root.current = 'menu'
-
-if __name__ == '__main__':
-    KoudaApp().run()
+                self.refresh_list
