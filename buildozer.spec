@@ -20,7 +20,7 @@ version = 1.0.1
 
 # --- REQUIREMENTS (ACTUALIZADOS PARA V6) ---
 # Se agregaron: requests, urllib3, idna (para Geo-IP) y certifi/openssl (para HTTPS)
-requirements = python3, kivy==2.3.0, kivymd==1.1.1, pillow, requests, urllib3, idna, certifi, openssl
+requirements = python3, kivy==2.3.0, kivymd@https://github.com/kivymd/KivyMD/archive/master.zip, pillow, requests, urllib3, idna, certifi, openssl
 
 # (str) Supported orientation
 orientation = portrait
