@@ -15,17 +15,23 @@ from kivy.clock import mainthread, Clock
 from kivy.utils import get_color_from_hex
 from kivy.uix.scrollview import ScrollView
 from kivy.properties import StringProperty, ColorProperty, BooleanProperty
+from kivy.uix.image import AsyncImage # <-- Importante para manejar imágenes sin crashear
 
+# --- IMPORTS DE KIVYMD OBLIGATORIOS PARA EL KV BUILDER ---
+# Si no importamos esto, Android no reconoce los nombres en el string KV y crashea
 from kivymd.app import MDApp
 from kivymd.uix.card import MDCard
 from kivymd.uix.dialog import MDDialog
-from kivymd.uix.button import MDRaisedButton, MDFlatButton
+from kivymd.uix.button import MDRaisedButton, MDFlatButton, MDIconButton, MDFloatingActionButton
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.list import OneLineIconListItem, IconLeftWidget, MDList
 from kivymd.toast import toast
 from kivymd.uix.spinner import MDSpinner
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.label import MDLabel
+from kivymd.uix.label import MDLabel, MDIcon
+from kivymd.uix.screenmanager import MDScreenManager
+from kivymd.uix.toolbar import MDTopAppBar
+from kivymd.uix.scrollview import MDScrollView
 
 # --- LÓGICA DE RED ---
 def get_server_data(address, get_players=False):
@@ -35,7 +41,6 @@ def get_server_data(address, get_players=False):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(1.5)
 
-        # --- 1. A2S_INFO ---
         QUERY_INFO = b'\xFF\xFF\xFF\xFFTSource Engine Query\x00'
         start_time = time.perf_counter()
         sock.sendto(QUERY_INFO, addr)
@@ -77,13 +82,11 @@ def get_server_data(address, get_players=False):
             pass 
 
         try:
-            # Petición HTTP a ip-api (esta es la que podía causar bloqueos si no estaba en hilo)
             geo_res = requests.get(f"http://ip-api.com/json/{ip}?fields=countryCode", timeout=1.0).json()
             info["country"] = geo_res.get("countryCode", "??")
         except:
             pass
 
-        # --- 2. A2S_PLAYER ---
         player_list = []
         if get_players:
             try:
@@ -143,10 +146,12 @@ KV = """
     line_color: app.neon_orange if app.current_filter == root.game_tag else [0,0,0,0]
     line_width: 1.5 if app.current_filter == root.game_tag else 0
     
-    FitImage:
+    # Reemplazamos FitImage por AsyncImage nativo (no crashea si el source está vacío)
+    AsyncImage:
         source: root.image_path
         size_hint_y: 0.75
-        radius: [15, 15, 0, 0]
+        allow_stretch: True
+        keep_ratio: False
         
     MDLabel:
         text: root.game_name
@@ -312,7 +317,8 @@ MDScreenManager:
 
 class GameCard(MDCard):
     game_name = StringProperty()
-    image_path = StringProperty()
+    # Asignamos un string por defecto válido a image_path por seguridad
+    image_path = StringProperty("blank.png") 
     bg_color = ColorProperty()
     game_tag = StringProperty() 
 
@@ -339,7 +345,9 @@ class KoudaApp(MDApp):
         Window.clearcolor = get_color_from_hex("#0F0F0F")
         self.storage_file = os.path.join(self.user_data_dir, "servers.json")
         self.favs_file = os.path.join(self.user_data_dir, "favs.json")
-        self.assets_path = os.path.join(self.directory, "assets")
+        
+        # Corrección de ruta de assets para Android
+        self.assets_path = os.path.join(os.path.dirname(__file__), "assets")
         self.theme_cls.theme_style = "Dark"
         
         self.bg_dark = get_color_from_hex("#0F0F0F")
@@ -347,22 +355,23 @@ class KoudaApp(MDApp):
         self.neon_orange = get_color_from_hex("#FF6B00")
         self.text_dim = get_color_from_hex("#707070")
 
-        # Escudo de imágenes fantasma
         self.blank_img = os.path.join(self.user_data_dir, "blank.png")
-        if not os.path.exists(self.blank_img):
-            blank_data = b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
-            with open(self.blank_img, "wb") as f:
-                f.write(base64.b64decode(blank_data))
+        try:
+            if not os.path.exists(self.blank_img):
+                blank_data = b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+                with open(self.blank_img, "wb") as f:
+                    f.write(base64.b64decode(blank_data))
+        except Exception:
+            self.blank_img = "" 
         
         return Builder.load_string(KV)
 
     def on_start(self):
-        # Desacoplamos por completo el inicio de peticiones del arranque de la UI
         Thread(target=self._arranque_diferido, daemon=True).start()
         Clock.schedule_interval(self.check_watchlist, 20)
 
     def _arranque_diferido(self):
-        time.sleep(1) # Le damos 1 segundo a la app para que respire y cargue sus gráficos
+        time.sleep(1) 
         Clock.schedule_once(lambda dt: self.refresh_list(), 0)
 
     def setup_game_cards(self):
@@ -397,8 +406,6 @@ class KoudaApp(MDApp):
     def refresh_list(self):
         self.server_cache.clear()
         self.root.get_screen('servers').ids.container.clear_widgets()
-        
-        # Procesamos la lectura de archivos y creación de peticiones en un hilo
         Thread(target=self._procesar_servidores_bg, daemon=True).start()
 
     def _procesar_servidores_bg(self):
@@ -507,7 +514,6 @@ class KoudaApp(MDApp):
 
     def check_watchlist(self, dt):
         if self.watching_ip:
-            # Enviamos la vigilancia a un hilo para evitar que la app tire un tirón cada 20 segs
             Thread(target=self._check_watchlist_bg, args=(self.watching_ip,), daemon=True).start()
 
     def _check_watchlist_bg(self, ip):
@@ -548,12 +554,4 @@ class KoudaApp(MDApp):
             content_cls=self.field,
             buttons=[
                 MDFlatButton(text="CANCELAR", theme_text_color="Custom", text_color=self.text_dim, on_release=lambda x: self.dialog.dismiss()),
-                MDRaisedButton(text="VINCULAR", md_bg_color=self.neon_orange, on_release=self.add_server_from_dialog)
-            ],
-            radius=[15, 15, 15, 15]
-        )
-        self.dialog.open()
-
-    def add_server_from_dialog(self, *args):
-        raw_val = self.field.text.strip().replace(" ", "")
-        
+                MDRaisedButton(text="VINCULAR", md_bg_color=self.neon_oran
