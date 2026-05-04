@@ -20,7 +20,7 @@ version = 1.0.1
 
 # --- REQUIREMENTS (ACTUALIZADOS PARA V6) ---
 # Se agregaron: requests, urllib3, idna (para Geo-IP) y certifi/openssl (para HTTPS)
-requirements = python3, kivy==2.3.0, kivymd==1.2.0, pillow, requests, urllib3, idna, certifi, openssl, hostpython3
+requirements = python3, kivy==2.3.0, kivymd==1.1.1, pillow, requests, urllib3, idna, certifi, openssl
 
 # (str) Supported orientation
 orientation = portrait
