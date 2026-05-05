@@ -13,12 +13,10 @@ from kivy.lang import Builder
 from kivy.uix.screenmanager import Screen
 from kivy.clock import mainthread, Clock
 from kivy.utils import get_color_from_hex
-from kivy.uix.scrollview import ScrollView
+from kivy.uix.scrollview import ScrollView # <- Usamos este que es nativo y no falla
 from kivy.properties import StringProperty, ColorProperty, BooleanProperty
-from kivy.uix.image import AsyncImage # <-- Importante para manejar imágenes sin crashear
+from kivy.uix.image import AsyncImage 
 
-# --- IMPORTS DE KIVYMD OBLIGATORIOS PARA EL KV BUILDER ---
-# Si no importamos esto, Android no reconoce los nombres en el string KV y crashea
 from kivymd.app import MDApp
 from kivymd.uix.card import MDCard
 from kivymd.uix.dialog import MDDialog
@@ -31,7 +29,6 @@ from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.label import MDLabel, MDIcon
 from kivymd.uix.screenmanager import MDScreenManager
 from kivymd.uix.toolbar import MDTopAppBar
-from kivymd.uix.scrollview import MDScrollView
 
 # --- LÓGICA DE RED ---
 def get_server_data(address, get_players=False):
@@ -55,7 +52,7 @@ def get_server_data(address, get_players=False):
 
         try:
             header = data[4]
-            if header == 0x6D:  # GoldSrc
+            if header == 0x6D:  
                 parts = data[5:].split(b'\x00')
                 if len(parts) >= 4:
                     info["name"] = parts[1].decode('utf-8', 'ignore')[:25]
@@ -67,7 +64,7 @@ def get_server_data(address, get_players=False):
                         info["max_players"] = data[idx+1]
                         info["players"] = f"{data[idx]}/{data[idx+1]}"
             
-            elif header == 0x49:  # Source
+            elif header == 0x49:  
                 parts = data[6:].split(b'\x00')
                 if len(parts) >= 3:
                     info["name"] = parts[0].decode('utf-8', 'ignore')[:25]
@@ -146,7 +143,6 @@ KV = """
     line_color: app.neon_orange if app.current_filter == root.game_tag else [0,0,0,0]
     line_width: 1.5 if app.current_filter == root.game_tag else 0
     
-    # Reemplazamos FitImage por AsyncImage nativo (no crashea si el source está vacío)
     AsyncImage:
         source: root.image_path
         size_hint_y: 0.75
@@ -292,7 +288,7 @@ MDScreenManager:
             size_hint_y: None
             height: "190dp"
             padding: ["20dp", "10dp"]
-            MDScrollView:
+            ScrollView:
                 bar_width: 0
                 MDBoxLayout:
                     id: game_carousel
@@ -300,7 +296,7 @@ MDScreenManager:
                     adaptive_width: True
                     spacing: "15dp"
 
-        MDScrollView:
+        ScrollView:
             MDBoxLayout:
                 id: container
                 orientation: 'vertical'
@@ -317,7 +313,6 @@ MDScreenManager:
 
 class GameCard(MDCard):
     game_name = StringProperty()
-    # Asignamos un string por defecto válido a image_path por seguridad
     image_path = StringProperty("blank.png") 
     bg_color = ColorProperty()
     game_tag = StringProperty() 
@@ -346,7 +341,6 @@ class KoudaApp(MDApp):
         self.storage_file = os.path.join(self.user_data_dir, "servers.json")
         self.favs_file = os.path.join(self.user_data_dir, "favs.json")
         
-        # Corrección de ruta de assets para Android
         self.assets_path = os.path.join(os.path.dirname(__file__), "assets")
         self.theme_cls.theme_style = "Dark"
         
@@ -554,4 +548,16 @@ class KoudaApp(MDApp):
             content_cls=self.field,
             buttons=[
                 MDFlatButton(text="CANCELAR", theme_text_color="Custom", text_color=self.text_dim, on_release=lambda x: self.dialog.dismiss()),
-                MDRaisedButton(text="VINCULAR", md_bg_color=self.neon_oran
+                MDRaisedButton(text="VINCULAR", md_bg_color=self.neon_orange, on_release=self.add_server_from_dialog)
+            ],
+            radius=[15, 15, 15, 15]
+        )
+        self.dialog.open()
+
+    def add_server_from_dialog(self, *args):
+        raw_val = self.field.text.strip().replace(" ", "")
+        ip_pattern = r"^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$"
+        
+        if re.match(ip_pattern, raw_val):
+            s = self.load_data(self.storage_file, [])
+            if raw_val not in s:
